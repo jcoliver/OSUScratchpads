@@ -464,6 +464,7 @@ function tcsdc_batch_downloader_helper($url, $vid){
   }
 }
 
+
 /**
  * Final step of the download.  This outputs the data into a tab delimitted file
  * which can then be imported using the feeds module.
@@ -478,23 +479,23 @@ function tcsdc_generate_tab_file(){
   fwrite($file_resource, "GUID\tTerm name\tParent GUID\tRank\n");
   tcsdc_generate_tab_file_recurse($id, $file_resource, $batch);
   fclose($file_resource);
-}
+ }
  */
 
-/** 
+/**
  * Recursive function to ensure that the terms are in the correct order.
 function tcsdc_generate_tab_file_recurse($id, $file_resource, &$batch){
   // Get the data for this id
-  $results = db_select('tcsdc_data', 't')->fields('t')->condition('id', $id)->condition('bid', $batch['id'])->execute();
-  foreach($results as $result){
-    $data = unserialize($result->data);
-    fwrite($file_resource, "{$result->id}\t{$result->name}\t{$result->parent}\t{$data['rank']}\n");
-    $results2 = db_select('tcsdc_data', 't')->fields('t', array(
-      'id'
-    ))->condition('parent', $result->id)->execute();
-    foreach($results2 as $result2){
-      tcsdc_generate_tab_file_recurse($result2->id, $file_resource, $batch);
-    }
+ $results = db_select('tcsdc_data', 't')->fields('t')->condition('id', $id)->condition('bid', $batch['id'])->execute();
+ foreach($results as $result){
+ $data = unserialize($result->data);
+ fwrite($file_resource, "{$result->id}\t{$result->name}\t{$result->parent}\t{$data['rank']}\n");
+ $results2 = db_select('tcsdc_data', 't')->fields('t', array(
+ 'id'
+ ))->condition('parent', $result->id)->execute();
+ foreach($results2 as $result2){
+ tcsdc_generate_tab_file_recurse($result2->id, $file_resource, $batch);
+ }
   }
 }
  */
