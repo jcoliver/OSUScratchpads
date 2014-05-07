@@ -30,8 +30,7 @@ function morphbank_views_default_views(){
 //  $handler->display->display_options['style_plugin'] = 'slideshow';// TODO: is this right?
   $handler->display->display_options['style_plugin'] = 'list';
   $handler->display->display_options['style_options']['wrapper_class'] = 'media-gallery';
-  // see linkes 2015-2018 in scratchpads_species.views_default.inc
-
+  // see links 2015-2018 in scratchpads_species.views_default.inc
 
   //TODO: there are many additional style_options in scratchpads_species.views_default.inc ~line 419
   $handler->display->display_options['row_plugin'] = 'entity';// TODO: this needs to change
