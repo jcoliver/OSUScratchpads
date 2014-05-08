@@ -1,0 +1,310 @@
+<?php
+//include_once '../morphbank.module';
+
+/**
+ * Implements hook_block_info().
+ */
+function morphbank_widget_block_info(){
+  return array(
+    'default' => array(
+      'info' => t('Morphbank Images Block'),
+      'cache' => DRUPAL_CACHE_PER_PAGE,
+      'pages' => 'taxonomy/term/*/media',
+      'visibility' => BLOCK_VISIBILITY_LISTED,
+      'status' => 1,
+      'region' => 'content',
+      'weight' => 200
+    )
+  );
+}
+
+/**
+ * Implements hook_block_view().
+ */
+function morphbank_widget_block_view($delta = '') {
+  $block = array();
+  // TODO: $delta could indicate what types of search we would like to do.
+  switch ($delta) {
+    default:
+      $block['subject'] = t('Morphbank images block');
+      $block['content'] = _morphbank_widget_block_contents($delta);
+/*      $block['content'] = array(
+          'block' => array(
+              '#markup' => _morphbank_widget_block_contents($delta),
+              ),
+      );*/
+      break;
+      /**/
+  }
+  return $block;
+}
+
+/**
+ * Grabbing the contents for the block.
+ *
+ * Relies on call to morphbank_image_search to get the results as an array of
+ * SimpleXMLElement objects, then uses theme_morphbank_block_image to parse
+ * the XML and produce html tags of content.
+ */
+function _morphbank_widget_block_contents($delta) {
+  $output = '<h4>Images from Morphbank</h4>';
+  // TODO: In this switch function, we should get additional arguments necessary
+  // for the query we are to do (like the term name, if we are using that).
+  switch ($delta) {
+//    case 'morphbank_images':
+    default:
+      // Get the term we are on
+      $term = menu_get_object('taxonomy_term', 2);
+      // For an alternative approach, using the field_unit_name values,
+      // see sofapi_search in sofapi.module
+      $term_name = $term->name;
+
+      $search_terms = array(
+          'taxonName' => $term_name,
+          );
+
+      // Now get the images as an array of SimpleXMLObjects, let theme functions extract information
+      if ($images = morphbank_image_search($search_terms)) {
+        $image_count = 0;
+        foreach ($images as $image) {
+          // Each $image will effectively correspond to an element (object type = "Image") from
+          // the morphbank response, so the root element of the SimpleXMLObject is object.
+          // <object type='Image'>
+          //    <sourceId>
+          //      <morphbank>805486</morphbank>
+          //    </sourceId>
+          //    ...
+          // </object>
+          $theme_variables = array(
+              'image' => $image,
+              );
+          $output .= theme('morphbank_block_image', $theme_variables);
+          $image_count++;
+        }
+        if ($image_count == 0) {
+//          $output .= t('No media found');
+          $output = "<span>No Morphbank images found</span>";
+        }
+      } else {
+//        $items[] = 'No media found';
+//        $output = array('#markup' => theme('item_list', array('items' => $items)));
+        $output = "<span>No Morphbank records found</span>";
+
+      }
+      /**/
+      break;
+  }
+  return $output;
+}
+
+/**
+ * Passes $search_terms to morphbank_image_request and returns response, if any.
+ *
+ * @param array $search_terms
+ *   Associative array of search terms that will be sumitted to Morphbank query.
+ *
+ * @return array
+ *   Indexed array of XML objects correpsonding to 'object type = "Image"' elements in Morphbank response
+ * @todo This may be over-atomized with morphbank_image_request
+ */
+function morphbank_image_search($search_terms) {
+  $response = morphbank_image_request($search_terms);
+  if ($response) {
+    // 'response' is the root element in the returned XML:
+    // <mb:response xsi:schemaLocation="http://www.morphbank.net/mbsvc3/ http://www.morphbank.net/schema/mbsvc3.xsd">
+//    return $response['response'];
+    return $response;
+  }
+  return FALSE;
+}
+
+/**
+ *
+ * @param array $search_terms
+ *   Associative array of search terms that will be sumitted to Morphbank query.
+ *
+ * @return array
+ *   Indexed array of XML objects correpsonding to 'object type = "Image"' elements in Morphbank response
+ */
+function morphbank_image_request($search_terms) {
+  // TODO: some of these may end up being assigned in _morphbank_widget_block_contents
+  $other_args = array(
+      'method' => 'taxon',
+      'objecttype' => 'Image',
+      'format' => 'svc',
+      );
+  $args = array_merge($other_args, $search_terms);
+
+  // Encode the query parameters for URL
+  foreach ($args as $key => $value) {
+    $encoded_parameters[] = urlencode($key) . '=' . urlencode($value);
+  }
+
+  // Build the query string
+  $query_string = implode('&', $encoded_parameters);
+
+  // Build the url
+  $request_url = MORPHBANK_SERVICE_REQUEST . '?' . $query_string;
+
+  // Make the request
+  $result = drupal_http_request($request_url);
+
+  //TODO: deal with error codes here
+  // We cannot just use json encode/decode because it results in a single 'object' element.
+  // $response_json = json_encode($response_xml);
+  // $response_array = json_decode($response_json, TRUE);
+
+  // Convert the 'data' object returned from drupal_http_request from string to an XML object
+  $response_xml = simplexml_load_string($result->data);
+
+  if (!is_null($response_xml->numReturned)) {
+    $num_returned = (int) $response_xml->numReturned;
+  }
+
+  if ($num_returned > 0) {
+    $response_array = array();
+    foreach ($response_xml->object as $object) {
+      $obj_attributes = $object->attributes();
+      if ($obj_attributes['type'] == "Image") {
+        $response_array[] = $object;
+      }
+    }
+  } else { // numReturned element was zero (or absent)
+    // TODO: deal with no response here
+    return FALSE;
+  }
+
+  // TODO: cache, if possible
+  return $response_array;
+}
+
+/**
+ * Implements hook_theme().
+ */
+function morphbank_widget_theme() {
+  return array(
+    'morphbank_block_image' => array(
+      'variables' => array('image'),
+    ),
+    'morphbank_image' => array(
+      'variables' => array('image'),
+    ),
+  );
+}
+
+
+/**
+ * Theme image blocks.
+ *
+ * @param array $variables
+ *   Associative array of variables, including at least an 'image' element,
+ *   which is a SimpleXMLObject.
+ * @todo: later developments may also pass attributes such as 'size' in $variables
+ * @todo: perhaps excessive atomization with theme_morphbank_image
+ */
+function theme_morphbank_block_image($variables) {
+  $image = $variables['image'];
+  return theme('morphbank_image', array('image' => $image));
+}
+
+/**
+ * Theme a Morphbank image.
+ *
+ * Handles the bulk of processing of the xml object corresponding to
+ * morphbank response element <object type="Image">, which should
+ * be passed in $variables as 'image' => SimpleXMLElement.
+ *
+ * @param array $variables
+ */
+function theme_morphbank_image($variables) {
+  //TODO: remember to cast xml objects as strings before using them thusly
+  $image_object_element = $variables['image'];
+
+  // Want to retrieve the image id as a string
+  $source_id_element = $image_object_element->sourceId;
+  $image_id = (int) $source_id_element->morphbank;
+  // Get dimensions so we can size them appropriately
+  $height = (int) $image_object_element->height;
+  $width = (int) $image_object_element->width;
+
+  if ($height > $width) {
+    $scale = 200 / $height;
+    $dimensions['height'] = 200;
+    $dimensions['width'] = (int) ($scale * $width);
+  } else {
+    $scale = 200 / $width;
+    $dimensions['height'] = (int) ($scale * $height);
+    $dimensions['width'] = 200;
+  }
+
+  $url_string = morphbank_record_url($image_id);
+
+  $img_tag = morphbank_image_img($image_id, $dimensions);
+  $title = "Morphbank Image ID " . $image_id;
+  $attributes = array(
+        'title' => $title,
+//        'rel' => $rel,
+//        'target' => '_blank',
+      );
+
+  $options = array(
+      'attributes' => $attributes,
+      'absolute' => TRUE,
+      'html' => TRUE,
+      );
+
+  $span_tag = "<span>" . l($img_tag, $url_string, $options) . "</span>";
+
+  return $span_tag;
+}
+
+/**
+ * Return a URL link to $image
+ *
+ * @param int $image_id
+ *   The morphbank ID of the image
+ *
+ * @return string
+ *   A URL that links to the image on Morphbank. e.g. http://images.morphbank.net/?id=805611&imgType=jpg
+ */
+function morphbank_image_url($image_id) {
+  $url = MORPHBANK_IMAGE_URL . '?id=' . $image_id . '&imgType=jpg';
+  return $url;
+}
+
+/**
+ * Return a URL link to a morphbank record
+ *
+ * @param int $record_id
+ *   The morphbank ID of the record
+ *
+ * @return string
+ *   A URL that links to the image on Morphbank, e.g. http://www.morphbank.net/?id=805611
+ */
+function morphbank_record_url($record_id) {
+  $url = MORPHBANK_NET_URL . '?id=' . $record_id;
+  return $url;
+}
+
+/**
+ * Return an HTML img tag for passed $image
+ *
+ * @param int $image
+ */
+function morphbank_image_img($image_id, $dimensions) {
+  $image_url = morphbank_image_url($image_id);
+  $title = "Morphbank Image ID " . $image_id;
+  // TODO: consider displaying square images instead?
+  $attributes = array(
+      'height' => "{$dimensions['height']}px",
+      'width' => "{$dimensions['width']}px",
+      );
+  $theme_array = array(
+      'path' => $image_url,
+      'alt' => $title,
+      'title' => $title,
+      'attributes' => $attributes,
+      'get size' => FALSE,
+      );
+  return theme('image', $theme_array);
+}

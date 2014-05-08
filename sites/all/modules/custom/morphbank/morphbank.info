@@ -2,4 +2,4 @@ name = "Morphbank API"
 description = "Allows display of Morphbank images on taxon pages."
 package = Morphbank
 core = 7.x
-version = 0.2
+version = 0.3

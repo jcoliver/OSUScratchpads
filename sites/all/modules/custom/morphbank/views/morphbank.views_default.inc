@@ -18,34 +18,43 @@ function morphbank_views_default_views(){
   /* Display: Master */
   $handler = $view->new_display('default', 'Master', 'default');
   $handler->display->display_options['title'] = 'Morphbank Images';
-  $handler->display->display_options['css_class'] = 'omega grid-4';
-  $handler->display->display_options['access']['type'] = 'none';
+  $handler->display->display_options['css_class'] = 'view-inline-filters';
+  $handler->display->display_options['use_ajax'] = TRUE;
+  $handler->display->display_options['access']['type'] = 'perm';
   $handler->display->display_options['cache']['type'] = 'none';
   $handler->display->display_options['query']['type'] = 'views_query';
   $handler->display->display_options['query']['options']['query_comment'] = FALSE;
   $handler->display->display_options['exposed_form']['type'] = 'basic';
-  $handler->display->display_options['pager']['type'] = 'some';
+  $handler->display->display_options['pager']['type'] = 'full';
   $handler->display->display_options['pager']['options']['items_per_page'] = '10';
-//  $handler->display->display_options['style_plugin'] = 'eolapi';
-//  $handler->display->display_options['style_plugin'] = 'slideshow';// TODO: is this right?
+  $handler->display->display_options['pager']['options']['offset'] = '0';
+  $handler->display->display_options['pager']['options']['id'] = '0';
+  $handler->display->display_options['pager']['options']['expose']['items_per_page_options_all'] = 1;
+//  $handler->display->display_options['style_plugin'] = 'eolapi';// TODO: checkout eolapi_plugin_style_eolapi
+//  $handler->display->display_options['style_plugin'] = 'slideshow';
   $handler->display->display_options['style_plugin'] = 'list';
   $handler->display->display_options['style_options']['wrapper_class'] = 'media-gallery';
-  // see links 2015-2018 in scratchpads_species.views_default.inc
+  // see lines 2015-2018 in scratchpads_species.views_default.inc
+//  $handler->display->display_options['row_plugin'] = 'entity';// TODO: this needs to change
+//  $handler->display->display_options['row_options']['view_mode'] = 'teaser';
+  $handler->display->display_options['row_plugin'] = 'fields';
+  $handler->display->display_options['row_options']['hide_empty'] = 0;
+  $handler->display->display_options['row_options']['default_field_elements'] = 0;
+  $handler->display->display_options['defaults']['row_options'] = FALSE;
+  $handler->display->display_options['defaults']['fields'] = FALSE;
 
-  //TODO: there are many additional style_options in scratchpads_species.views_default.inc ~line 419
-  $handler->display->display_options['row_plugin'] = 'entity';// TODO: this needs to change
-  $handler->display->display_options['row_options']['view_mode'] = 'teaser';
-  /* No results behavior: Global: Text area */
+  /* No results behavior: Global: Text area // TODO: uncomment for an empty view to show up.
   $handler->display->display_options['empty']['area']['id'] = 'area';
   $handler->display->display_options['empty']['area']['table'] = 'views';
   $handler->display->display_options['empty']['area']['field'] = 'area';
   $handler->display->display_options['empty']['area']['empty'] = FALSE;
   $handler->display->display_options['empty']['area']['format'] = 'filtered_html';
   $handler->display->display_options['empty']['area']['tokenize'] = 0;
+  */
   /* Field: Taxonomy term data: tid  //TODO: this should probably be replaced by morphbank table fields */
-  $handler->display->display_options['fields']['tid']['id'] = 'tid';
-  $handler->display->display_options['fields']['tid']['table'] = 'taxonomy_term_data';
-  $handler->display->display_options['fields']['tid']['field'] = 'tid';
+//  $handler->display->display_options['fields']['tid']['id'] = 'tid';
+//  $handler->display->display_options['fields']['tid']['table'] = 'taxonomy_term_data';
+//  $handler->display->display_options['fields']['tid']['field'] = 'tid';
   /* Sorts criterion: Taxonomy term data: name */
   $handler->display->display_options['sorts']['name']['id'] = 'name';
   $handler->display->display_options['sorts']['name']['table'] = 'taxonomy_term_data';
