@@ -47,7 +47,8 @@ function morphbank_widget_block_view($delta = '') {
  * the XML and produce html tags of content.
  */
 function _morphbank_widget_block_contents($delta) {
-  $output = '<h4>Images from Morphbank</h4>';
+//  $output = '<h4>Images from Morphbank</h4>';
+  $output = '';
   // TODO: In this switch function, we should get additional arguments necessary
   // for the query we are to do (like the term name, if we are using that).
   switch ($delta) {
