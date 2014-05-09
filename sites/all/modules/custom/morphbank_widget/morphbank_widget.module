@@ -1,5 +1,9 @@
 <?php
-//include_once '../morphbank.module';
+
+//require_once(drupal_get_path('module', 'morphbank_widget') . '/morphbank_widget.inc');
+define("MORPHBANK_SERVICE_REQUEST", "http://services.morphbank.net/mb3/request");
+define("MORPHBANK_NET_URL", "http://morphbank.net/");
+define("MORPHBANK_IMAGE_URL", "http://images.morphbank.net/");
 
 /**
  * Implements hook_block_info().
@@ -13,7 +17,7 @@ function morphbank_widget_block_info(){
       'visibility' => BLOCK_VISIBILITY_LISTED,
       'status' => 1,
       'region' => 'content',
-      'weight' => 200
+      'weight' => 101
     )
   );
 }
@@ -26,15 +30,13 @@ function morphbank_widget_block_view($delta = '') {
   // TODO: $delta could indicate what types of search we would like to do.
   switch ($delta) {
     default:
-      $block['subject'] = t('Morphbank images block');
-      $block['content'] = _morphbank_widget_block_contents($delta);
-/*      $block['content'] = array(
+      $block['subject'] = t('Morphbank images');
+      $block['content'] = array(
           'block' => array(
               '#markup' => _morphbank_widget_block_contents($delta),
               ),
-      );*/
+          );
       break;
-      /**/
   }
   return $block;
 }
@@ -92,7 +94,6 @@ function _morphbank_widget_block_contents($delta) {
         $output = "<span>No Morphbank records found</span>";
 
       }
-      /**/
       break;
   }
   return $output;
@@ -108,6 +109,7 @@ function _morphbank_widget_block_contents($delta) {
  *   Indexed array of XML objects correpsonding to 'object type = "Image"' elements in Morphbank response
  * @todo This may be over-atomized with morphbank_image_request
  */
+/**/
 function morphbank_image_search($search_terms) {
   $response = morphbank_image_request($search_terms);
   if ($response) {
@@ -118,6 +120,7 @@ function morphbank_image_search($search_terms) {
   }
   return FALSE;
 }
+/**/
 
 /**
  *
@@ -127,6 +130,7 @@ function morphbank_image_search($search_terms) {
  * @return array
  *   Indexed array of XML objects correpsonding to 'object type = "Image"' elements in Morphbank response
  */
+/**/
 function morphbank_image_request($search_terms) {
   // TODO: some of these may end up being assigned in _morphbank_widget_block_contents
   $other_args = array(
@@ -178,21 +182,27 @@ function morphbank_image_request($search_terms) {
   // TODO: cache, if possible
   return $response_array;
 }
+/**/
 
 /**
  * Implements hook_theme().
  */
 function morphbank_widget_theme() {
   return array(
-    'morphbank_block_image' => array(
-      'variables' => array('image'),
-    ),
-    'morphbank_image' => array(
-      'variables' => array('image'),
-    ),
+      'morphbank_block_image' => array(
+        'variables' => array('image'),
+        ),
+      'morphbank_image' => array(
+        'variables' => array('image'),
+        ),
   );
 }
 
+/*
+function theme_morphbank_widget_image($variables) {
+  return "<span>Widget theme</span>";
+}
+*/
 
 /**
  * Theme image blocks.
@@ -203,11 +213,12 @@ function morphbank_widget_theme() {
  * @todo: later developments may also pass attributes such as 'size' in $variables
  * @todo: perhaps excessive atomization with theme_morphbank_image
  */
+/**/
 function theme_morphbank_block_image($variables) {
   $image = $variables['image'];
   return theme('morphbank_image', array('image' => $image));
 }
-
+/**/
 /**
  * Theme a Morphbank image.
  *
@@ -217,6 +228,7 @@ function theme_morphbank_block_image($variables) {
  *
  * @param array $variables
  */
+/**/
 function theme_morphbank_image($variables) {
   //TODO: remember to cast xml objects as strings before using them thusly
   $image_object_element = $variables['image'];
@@ -258,6 +270,7 @@ function theme_morphbank_image($variables) {
 
   return $span_tag;
 }
+/**/
 
 /**
  * Return a URL link to $image
@@ -268,11 +281,12 @@ function theme_morphbank_image($variables) {
  * @return string
  *   A URL that links to the image on Morphbank. e.g. http://images.morphbank.net/?id=805611&imgType=jpg
  */
+/**/
 function morphbank_image_url($image_id) {
   $url = MORPHBANK_IMAGE_URL . '?id=' . $image_id . '&imgType=jpg';
   return $url;
 }
-
+/**/
 /**
  * Return a URL link to a morphbank record
  *
@@ -282,16 +296,18 @@ function morphbank_image_url($image_id) {
  * @return string
  *   A URL that links to the image on Morphbank, e.g. http://www.morphbank.net/?id=805611
  */
+/**/
 function morphbank_record_url($record_id) {
   $url = MORPHBANK_NET_URL . '?id=' . $record_id;
   return $url;
 }
-
+/**/
 /**
  * Return an HTML img tag for passed $image
  *
  * @param int $image
  */
+/**/
 function morphbank_image_img($image_id, $dimensions) {
   $image_url = morphbank_image_url($image_id);
   $title = "Morphbank Image ID " . $image_id;
@@ -309,3 +325,4 @@ function morphbank_image_img($image_id, $dimensions) {
       );
   return theme('image', $theme_array);
 }
+/**/

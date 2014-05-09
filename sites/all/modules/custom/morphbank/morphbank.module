@@ -5,9 +5,11 @@
  * queries based on the taxonomic name for the given species page.
  */
 
-define("MORPHBANK_SERVICE_REQUEST", "http://services.morphbank.net/mb3/request");
-define("MORPHBANK_NET_URL", "http://morphbank.net/");
-define("MORPHBANK_IMAGE_URL", "http://images.morphbank.net/");
+require_once(drupal_get_path('module', 'morphbank') . '/morphbank.inc');
+
+//define("MORPHBANK_SERVICE_REQUEST", "http://services.morphbank.net/mb3/request");
+//define("MORPHBANK_NET_URL", "http://morphbank.net/");
+//define("MORPHBANK_IMAGE_URL", "http://images.morphbank.net/");
 
 /**
  * Implements hook_menu().
@@ -55,24 +57,11 @@ function morphbank_search($tid, $age = 604800) {
   $term_name = $term->name;
   return array(
       'markup' => array(
-          '#markup' => "<p>Term: {$term_name}</p>"
+          '#markup' => "<p>This should be a term name: {$term_name}</p>"
           ),
       );
 
 }
-
-/*
- * Uses $tid to generate URL for query and gets the XML response.
- * Returns the SimpleXMLElement of the response.
- * Also sends response (piecemeal) to sofapi_process_data_object; that
- * method saves and stores eolapi objects...
-function sofapi_search($tid, $age = 604800){ // Seconds in one week.
-}*/
-
-/*
- * processes $data_object, which is a SimpleXMLElement
-function sofapi_process_data_object($data_object, $tid, $age = 604800){
-}*/
 
 /**
  * Implements hook_views_api().

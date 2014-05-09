@@ -2,5 +2,4 @@ name = "Morphbank Block Widget"
 description = "Allows display of Morphbank images on taxonomy term pages."
 package = Morphbank
 core = 7.x
-version = 0.1
-dependencies[] = morphbank
+version = 0.2
