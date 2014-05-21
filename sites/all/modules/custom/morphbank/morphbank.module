@@ -5,6 +5,7 @@
  * queries based on the taxonomic name for the given species page.
  */
 
+// TODO: see module_load_include in eolapi.ajax.inc
 require_once(drupal_get_path('module', 'morphbank') . '/morphbank.inc');
 
 //define("MORPHBANK_SERVICE_REQUEST", "http://services.morphbank.net/mb3/request");

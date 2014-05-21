@@ -1,0 +1,80 @@
+<?php
+/**
+ * @file
+ * Harvest images from Morphbank for a selected vocabulary
+ */
+
+/**
+ * Implements hook_menu().
+ */
+function morphbank_harvest_menu() {
+  // e.g. go to localhost/OSUScratchpads/morphbank_harvest to access the form
+//  $items['morphbank_harvest'] = array(
+  $items['admin/config/system/morphbank_harvest'] = array(
+    'title' => 'Morphbank harvest',
+    'description' => t('Harvests images from Morphbank for a given vocabulary'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('morphbank_harvest_form'),
+    'access callback' => TRUE,
+    'type' => MENU_NORMAL_ITEM,
+  );
+  return $items;
+}
+
+/**
+ * Define the form.
+ */
+function morphbank_harvest_form() {
+  $vocabularies = taxonomy_get_vocabularies();
+  foreach ($vocabularies as $vocabulary) {
+//    $taxonomies['morphbank_harvest_' . $vocabulary->machine_name] = $vocabulary->name;
+    $taxonomies['morphbank_harvest_' . $vocabulary->vid] = $vocabulary->name;
+  }
+  $form['vid'] = array( // the name of the field is 'vid'
+//    '#title' => t('Vocabularies'),
+//    '#type' => 'textfield',
+//    '#description' => t('The place where vocabulary list will go'),
+//      'silver_import_subform_feeds' => array(
+      '#type' => 'select',
+      '#title' => '',
+      '#options' => $taxonomies,
+      '#empty_option' => t('Select vocabulary'),
+//      '#ajax' => array(
+//        'callback' => 'silver_ajax_callback',
+//        'wrapper' => 'silver_import_subform_feeds'
+//      )
+//    ),
+
+  );
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Harvest'),
+  );
+  return $form;
+}
+
+// TODO any additional validation?
+
+/**
+ * Post-validation action on when form is submitted
+ */
+function morphbank_harvest_form_submit($form, &$form_state) {
+  $vid_string = $form_state['values']['vid']; // get the selected vid
+  $vid = str_replace('morphbank_harvest_', '', $vid_string);
+  $taxonomy = taxonomy_get_tree($vid);
+  if (!is_null($taxonomy) && count($taxonomy) > 0) {
+    $terms = array();
+$tid_array = array();
+    foreach ($taxonomy as $term) {
+      $terms[$term->tid] = $term->name;
+$tid_array[] = $term->tid;
+    }
+$to_use = rand(0, (count($tid_array) - 1));
+$use_id = $tid_array[$to_use];
+
+    // We now have an array of term ids and their names.  Use each one to perform a morphbank query and save the image
+drupal_set_message(t('Vocabulary term @number is @name', array('@number' => $use_id, '@name' => $terms[$use_id])));
+  } else {
+    drupal_set_message(t('Empty vocabulary selected (vid = @vid)', array('@vid' => $vid)));
+  }
+}
