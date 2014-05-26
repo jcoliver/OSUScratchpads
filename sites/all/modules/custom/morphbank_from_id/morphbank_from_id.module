@@ -54,11 +54,12 @@ function morphbank_from_id_form_submit($form, &$form_state) {
         $destination = file_stream_wrapper_uri_normalize($destination_directory . '/temporary_image.jpg');
 
         $image = file_get_contents($image_location);
+        // This save sets status == 1
         $file = file_save_data($image, $destination, FILE_EXISTS_RENAME);
 
         if (is_object($file)) {
           $filename = $file->filename;
-          drupal_set_message(t('Saved image with ID @mid as temporary file with filename @filename', array('@mid' => $mid, '@filename' => $filename)));
+          drupal_set_message(t('Saved image with ID @mid with filename @filename', array('@mid' => $mid, '@filename' => $filename)));
 //          $file->status = 1;
 //          $file = file_save($file);
         } else {
