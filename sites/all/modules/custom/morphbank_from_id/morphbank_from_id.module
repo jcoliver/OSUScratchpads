@@ -1,0 +1,73 @@
+<?php
+/**
+ * @file
+ * Retrieve and save image from Morphbank.
+ *
+ * Development module for investigating drupal file handling
+ */
+
+/**
+ * Implements hook_menu().
+ */
+function morphbank_from_id_menu() {
+  // e.g. go to localhost/OSUScratchpads/morphbank_harvest to access the form
+//  $items['morphbank_harvest'] = array(
+  $items['admin/config/system/morphbank_from_id'] = array(
+    'title' => 'Morphbank from ID',
+    'description' => t('Harvests images from Morphbank for a given Morphbank ID'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('morphbank_from_id_form'),
+    'access callback' => TRUE,
+    'type' => MENU_NORMAL_ITEM,
+  );
+  return $items;
+}
+
+/**
+ * Define the form.
+ */
+function morphbank_from_id_form() {
+  $form['mid'] = array(
+    '#title' => t('Morphbank ID'),
+    '#type' => 'textfield',
+    '#description' => t('Please enter the Morphbank ID'),
+  );
+
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Save image'),
+  );
+  return $form;
+}
+
+/**
+ * Post-validation action on when form is submitted
+ */
+function morphbank_from_id_form_submit($form, &$form_state) {
+  $mid_string = $form_state['values']['mid']; // get the selected morphbank image id
+  $mid = (int) $mid_string;
+  if (is_numeric($mid)) {
+      $image_location = 'http://images.morphbank.net/' . '?id=' . $mid . '&imgType=jpg';
+//      $destination_directory = 'sites/default/files/morphbank';
+      $destination_directory = variable_get('file_default_scheme', 'public') . '://morphbank';
+      if (file_prepare_directory($destination_directory, FILE_CREATE_DIRECTORY)) {
+        $destination = file_stream_wrapper_uri_normalize($destination_directory . '/temporary_image.jpg');
+
+        $image = file_get_contents($image_location);
+        $file = file_save_data($image, $destination, FILE_EXISTS_RENAME);
+
+        if (is_object($file)) {
+          $filename = $file->filename;
+          drupal_set_message(t('Saved image with ID @mid as temporary file with filename @filename', array('@mid' => $mid, '@filename' => $filename)));
+//          $file->status = 1;
+//          $file = file_save($file);
+        } else {
+          drupal_set_message(t('No file object retrieved for Morphbank ID @mid', array('@mid' => $mid)));
+        }
+      } else {
+        drupal_set_message(t('Morphbank ID number is @mid, but could not create morphbank directory', array('@mid' => $mid)));
+      }
+  } else {
+    drupal_set_message(t('ID is non-numeric: @mid', array('@mid' => $mid_string)));
+  }
+}
