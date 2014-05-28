@@ -46,11 +46,104 @@ function morphbank_from_id_form() {
 function morphbank_from_id_form_submit($form, &$form_state) {
   $mid_string = $form_state['values']['mid']; // get the selected morphbank image id
   $mid = (int) $mid_string;
+
+  // We want to try:
+  // 1. get a certain node (start with nid = 7)
+  // 2. get the newly added image (what is it?) file_load($fid)
+  // 3. add field_data_media_field->set(old list + new image)
+
+  $node_query = new EntityFieldQuery();
+  $node_query->entityCondition('entity_type', 'node')
+  ->entityCondition('bundle', 'specimen_observation')
+  ->fieldCondition('field_catalogue_number', 'value', 'DNA2320', '=');
+  $node_result = $node_query->execute();
+  if (isset($node_result['node'])) {
+    $node_ids = array_keys($node_result['node']);
+    $nid = $node_ids[0];
+    $node = node_load($nid);
+
+    $fid = 238;
+    $file = file_load($fid);
+
+    if ($file) {
+      $wrapper = entity_metadata_wrapper('node', $node);
+      if (!$wrapper) {
+        drupal_set_message('Wrapper is null for nid @nid', array('@nid' => $nid));
+      } else {
+        $current_list = $wrapper->field_media->value();
+        if (!$current_list) {
+          $current_list = array();
+          //drupal_set_message(t('List was EMPTY'));
+        } else {
+          //$count = count($current_list);
+          //drupal_set_message(t('Number of items in field_media: @count', array('@count' => $count)));
+        }
+
+        //TODO: The count is right (2), but cannot seem to add this additional file to the entity
+        // Tried a different file ($fid = 236), but still did not work.
+        foreach ($current_list as $field_media) {
+          //$item_name = $field_media->name->value();
+          //drupal_set_message(t('Item name: @name', array('@name' => $item_name)));
+          //$entity_type = $field_media['entity_type'];
+          //$fid = $field_media->field_media_fid;
+          //drupal_set_message(t('Entity type: @entity_type', array('@entity_type' => $entity_type)));
+        }
+
+
+//        $current_list[] = $file;
+//        $wrapper->field_media->set($current_list);
+//        $wrapper->save();
+
+//        drupal_set_message(t('Finished attempt at file add'));
+
+        /*
+        $properties = $wrapper->getPropertyInfo();
+        foreach ($properties as $key => $value) {
+          drupal_set_message(t('Property @key = @value', array('@key' => $key, '@value' => $value)));
+        }
+        */
+/*
+        $current_list = $wrapper->field_data_field_media->value();
+        if (!$current_list) {
+          $current_list = array();
+          drupal_set_message(t('List was EMPTY'));
+        } else {
+          $count = count($current_list);
+          drupal_set_message(t('List of values in field_data_field_media: @count', array('@count' => $count)));
+        }
+*/
+      }
+    } else {
+      drupal_set_message(t('No FILE found with fid = @fid', array('@fid' => $fid)));
+    }
+  } else {
+    drupal_set_message(t('NO NODE FOUND IN QUERY'));
+  }
+  /*
+  $nid = 7;
+  $node = node_load($nid);
+  $fid = 238;
+  $file = file_load($fid);
+
+  $wrapper = entity_metadata_wrapper('node', $node);
+  $current_list = $wrapper->field_data_media_field->value();
+  if (!$current_list) {
+    $current_list = array();
+  }
+  $current_list[] = $file;
+  $wrapper->field_data_media_field->set($current_list);
+  $wrapper->save();
+
+  drupal_set_message(t('Finished attempt at file add'));
+  */
+  /*
+
   if (is_numeric($mid)) {
       $image_location = 'http://images.morphbank.net/' . '?id=' . $mid . '&imgType=jpg';
 //      $destination_directory = 'sites/default/files/morphbank';
       $destination_directory = variable_get('file_default_scheme', 'public') . '://morphbank';
       if (file_prepare_directory($destination_directory, FILE_CREATE_DIRECTORY)) {
+        // For the file name, will want the taxonomic name, the morphbank id, and the original file name
         $destination = file_stream_wrapper_uri_normalize($destination_directory . '/temporary_image.jpg');
 
         $image = file_get_contents($image_location);
@@ -71,4 +164,5 @@ function morphbank_from_id_form_submit($form, &$form_state) {
   } else {
     drupal_set_message(t('ID is non-numeric: @mid', array('@mid' => $mid_string)));
   }
+  */
 }
