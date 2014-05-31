@@ -3,4 +3,6 @@ description = "Harvests Morphbank images."
 package = Morphbank
 core = 7.x
 version = 0.1
+dependencies[] = entity
+dependencies[] = field
 files[] = morphbank_harvest.module

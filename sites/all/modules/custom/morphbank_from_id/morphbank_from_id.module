@@ -47,6 +47,10 @@ function morphbank_from_id_form_submit($form, &$form_state) {
   $mid_string = $form_state['values']['mid']; // get the selected morphbank image id
   $mid = (int) $mid_string;
 
+  //TODO: want to add limit=-1 to query string to return unlimited number of images...?
+  //UPDATE: Instead, just add text box with some number (20) as default and instruct
+  //  users to enter -1 if they want an unlimited number per search
+
   // We want to try:
   // 1. get a certain node (start with nid = 7)
   // 2. get the newly added image (what is it?) file_load($fid)
@@ -98,7 +102,7 @@ function morphbank_from_id_form_submit($form, &$form_state) {
     drupal_set_message(t('NO NODE FOUND IN QUERY'));
   }
   /*
-
+  //TODO: DO NOT DELETE
   if (is_numeric($mid)) {
       $image_location = 'http://images.morphbank.net/' . '?id=' . $mid . '&imgType=jpg';
       $destination_directory = variable_get('file_default_scheme', 'public') . '://morphbank';
