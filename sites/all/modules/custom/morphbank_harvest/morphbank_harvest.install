@@ -1,0 +1,140 @@
+<?php
+/**
+ * @file  Initial installation of morphbank_harvest module
+ *
+ * Sets up two tables used in record-keeping.
+ */
+
+/**
+ * Implements hook_enable().
+ */
+/*
+function morphbank_harvest_enable() {
+
+}
+*/
+
+/**
+ * Implements hook_disable().
+ *
+ * Deletes records in field_data_field_media and file_usage tables corresponding
+ * to files that were harvested from Morphbank.  After records are removed, deletes
+ * the files themselves.
+ */
+function morphbank_harvest_disable() {
+  // First find all files that were obtained from the morphbank harvest
+  $morphbank_files = db_select('morphbank_images', 'm')->fields('m', array('fid'))
+    ->distinct() // So each fid is returned only once
+    ->execute();
+  $fids = array();
+  foreach ($morphbank_files as $row) {
+    $fids[] = $row->fid;
+  }
+
+  // Now delete records from field_data_field_media table
+  db_delete('field_data_field_media')->condition('field_media_fid', $fids, 'IN')->execute();
+
+  // Next delete records from file_usage table
+  db_delete('file_usage')->condition('fid', $fids, 'IN')->execute();
+
+  // Finally, remove the files themselves
+  $files = file_load_multiple($fids);
+  foreach ($files as $file) {
+    file_delete($file);
+  }
+}
+
+/**
+ * Implements hook_schema().
+ *
+ * Builds two tables used in record keeping:
+ *   morphbank_query, which keeps track of queries to morphbank
+ *   morphbank_images, which keeps track of the results (images) from those queries
+ */
+function morphbank_harvest_schema() {
+  $schema = array();
+  // Table to hold queries
+  $schema['morphbank_query'] = array(
+    'fields' => array(
+      'qid' => array(
+        'description' => 'Primary key',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'query' => array(
+        'description' => 'The URL submitted as query',
+        'type' => 'text',
+        'size' => 'normal',
+        'not null' => TRUE,
+      ),
+      'date_created' => array(
+        'description' => 'The date, as Unix timestamp, this query was created',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'latest_execution' => array(
+        'description' => 'The date, as Unix timestamp, this query was last executed',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+    ),
+    //TODO: Consider adding indexes?
+    'primary key' => array(
+      'qid'
+    ),
+
+  );
+  // Table to hold image information
+  $schema['morphbank_images'] = array(
+    'fields' => array(
+      'mid' => array(
+        'description' => 'Primary key',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'qid' => array(
+        'description' => 'The ID of the morphbank_query record that produced this image',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'morphbank_id' => array(
+        'description' => 'The morphbank ID of the image',
+        'type' => 'int',
+        'size' => 'normal',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'morphbank_specimen_id' => array(
+        'description' => 'The morphbank ID for the specimen in the image',
+        'type' => 'int',
+        'size' => 'normal',
+      ),
+      'fid' => array(
+        'description' => 'The ID of the image in the file_managed table',
+        'type' => 'int',
+        'size' => 'normal',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'original_filename' => array(
+        'description' => 'The original name of the file as uploaded to Morphbank',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      )
+    ),
+    //TODO: Add indexes?
+    'primary key' => array(
+      'mid',
+    ),
+  );
+
+  return $schema;
+}
