@@ -58,19 +58,19 @@ function morphbank_from_id_form_submit($form, &$form_state) {
   if ($form_state['values']['searchunid'] == 1) {
     $search_unidentifieds = TRUE;
   }
-
+/*
   if ($search_unidentifieds) {
     drupal_set_message(t('Search includes unidentifieds'));
   } else {
     drupal_set_message(t('Skipping unidentifieds'));
   }
-
+*/
 
 
 
   /* TODO: DO NOT DELETE
    * attaching file to node
-
+*/
   $mid_string = $form_state['values']['mid']; // get the selected morphbank image id
   $mid = (int) $mid_string;
 
@@ -89,8 +89,8 @@ function morphbank_from_id_form_submit($form, &$form_state) {
     $nid = $node_ids[0];
     $node = node_load($nid);
 
-//    $fid = 238;
-    $fid = 157;
+    $fid = 238;
+//    $fid = 157;
     $file = file_load($fid);
 
     if ($file) {
@@ -112,10 +112,18 @@ function morphbank_from_id_form_submit($form, &$form_state) {
         // Add this new file to current list
         $current_list[] = $file_as_array;
 
+        foreach ($current_list as $list_items) {
+          drupal_set_message(t('**Print list item**'));
+//          drupal_set_message(t('Print list item: @list_items', array('@list_items' => $list_items)));
+          foreach ($list_items as $key => $value) {
+            drupal_set_message(t('@key = @value', array('@key' => $key, '@value' => $value)));
+//            drupal_set_message(t('@key', array('@key' => $key)));
+          }
+        }
 
-        $wrapper->field_media->set($current_list);
-        $wrapper->save();
-        drupal_set_message(t('Finished attempt at file add'));
+//        $wrapper->field_media->set($current_list);
+//        $wrapper->save();
+//        drupal_set_message(t('Finished attempt at file add'));
 
       }
     } else {
@@ -124,7 +132,7 @@ function morphbank_from_id_form_submit($form, &$form_state) {
   } else {
     drupal_set_message(t('NO NODE FOUND IN QUERY'));
   }
-  */
+/*  */
 
   /*
   //TODO: DO NOT DELETE

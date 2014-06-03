@@ -8,11 +8,50 @@
 /**
  * Implements hook_enable().
  */
-/*
 function morphbank_harvest_enable() {
+  // Create morphbank specimen ID field
+  $field = array(
+    'active' => '1',
+    'cardinality' => '1',
+    'deleted' => '0',
+    'entity_types' => array(),
+    'field_name' => 'field_morphbank_specimen_id',
+    'type' => 'text',
+  );
+  $field = field_create_field($field);
 
+  // Add morphbank specimen ID field to Specimen/Observation content types
+  $instance = array(
+    'bundle' => 'specimen_observation',
+    'entity_type' => 'node',
+    'field_name' => 'field_morphbank_specimen_id',
+    'type' => 'text',
+    'label' => t('Morphbank Specimen ID'),
+    'required' => 0,
+    'widget' => array(
+      'type' => 'text_textfield',
+    ),
+    'default_value' => NULL,
+    'deleted' => '0',
+    'description' => '',
+    'display' => array(
+      'default' => array(
+        'label' => 'above',
+        'type' => 'text',
+      ),
+      'teaser' => array(
+        'label' => 'above',
+        'settings' => array(),
+        'type' => 'hidden',
+        'weight' => 0
+      ),
+    ),
+  );
+  field_create_instance($instance);
+
+  // Make the directory where images will be stored
+  @drupal_mkdir('public://morphbank');
 }
-*/
 
 /**
  * Implements hook_disable().
@@ -22,7 +61,9 @@ function morphbank_harvest_enable() {
  * the files themselves.
  */
 function morphbank_harvest_disable() {
-  // First find all files that were obtained from the morphbank harvest
+  field_delete_field('morphbank_specimen_id');
+
+  // Find all files that were obtained from the morphbank harvest
   $morphbank_files = db_select('morphbank_images', 'm')->fields('m', array('fid'))
     ->distinct() // So each fid is returned only once
     ->execute();
@@ -37,7 +78,7 @@ function morphbank_harvest_disable() {
   // Next delete records from file_usage table
   db_delete('file_usage')->condition('fid', $fids, 'IN')->execute();
 
-  // Finally, remove the files themselves
+  // Remove the files themselves
   $files = file_load_multiple($fids);
   foreach ($files as $file) {
     file_delete($file);
@@ -53,8 +94,9 @@ function morphbank_harvest_disable() {
  */
 function morphbank_harvest_schema() {
   $schema = array();
+  /*
   // Table to hold queries
-  $schema['morphbank_query'] = array( //TODO: How useful is this table, really?
+  $schema['morphbank_query'] = array(
     'fields' => array(
       'qid' => array(
         'description' => 'Primary key',
@@ -85,8 +127,8 @@ function morphbank_harvest_schema() {
     'primary key' => array(
       'qid'
     ),
-
   );
+  */
   // Table to hold image information
   $schema['morphbank_images'] = array(
     'fields' => array(
@@ -103,7 +145,7 @@ function morphbank_harvest_schema() {
         'not null' => TRUE,
         'default' => 0,
       ),
-      'morphbank_id' => array(
+      'morphbank_image_id' => array(
         'description' => 'The morphbank ID of the image',
         'type' => 'int',
         'size' => 'normal',

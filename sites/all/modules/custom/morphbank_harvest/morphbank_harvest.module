@@ -250,18 +250,41 @@ function _query_morphbank($term_name, $maximages) {
   }
 
 //  if ($store_query) {
-    // TODO: cache, if possible
+    // TODO: cache, if possible...maybe not
 //  }
   return $response_array;
 }
 
 /**
+ * Processes a XML object corresponding to a Morphbank image record.
+ *
+ * Extracts relevant element values from $response.  If this record (as identified
+ *   by the Morphbank ID) is new (no record in morphbank_images table), it adds
+ *   a record to the table; if the record is *not* new, checks the date of last
+ *   modification (in the XML as dateLastModified element).  If the record has
+ *   been updated on Morphbank since the last harvest (as recorded in
+ *   morphbank_images.last_modified field), it updates the morphbank_images record.
+ *
+ * After comparing ages, if the record is new(er), retrieves the image file from
+ *   Morphbank, renames the file, and saves the file to the public://morphbank
+ *   directory.
+ *
+ * Regardless of age of record, retrieves fid of file (which may have just been
+ *   created or updated) AND the Morphbank ID of the specimen record for the image.
+ *   Checks to see:
+ *     (1) If any Scratchpads Specimen/Observation nodes have the same Morphbank ID.
+ *       If so, see if they are linked in the field_data_field_media table; if not,
+ *       links them using entity wrapper.
+ *     (2) If any Scratchpads Specimen/Observation nodes are linked to the image
+ *       in the field_data_field_media table that do *not* have the same specimen
+ *       Morphbank ID, removes links using entity wrapper
  *
  * @param SimpleXMLObject $response
  *   XML object correpsonding to 'object type = "Image"' element in a Morphbank response
  *
  * @param string $term_name
- *   The term name used for the query that produced this response
+ *   The term name used for the query that produced this response, primarily used here
+ *   to create file name
  */
 function _process_response($response, $term_name) {
   // Want to retrieve the image id
@@ -269,67 +292,143 @@ function _process_response($response, $term_name) {
   $morphbank_image_id = (int) $source_id_element->morphbank;
 
   // See if we have a record for this image ID already
-  $last_changed = $response->dateLastModified;
+  $last_changed = $response->dateLastModified; //TODO: delete or change the name of this variable
   // Convert to Unix timestamp (seconds since Unix era)
-  $time = date(strtotime($last_changed));
+  $last_changed_on_morphbank = date(strtotime($response->dateLastModified));
 
-  $query_result = db_select('morphbank_images', 'm')->fields('m', array('mid', 'last_modified'))->condition('morphbank_id', $morphbank_image_id);
-  $to_update = array();
-  $have_record = FALSE;
-  foreach ($query_result as $row) {
-    $have_record = TRUE;
-    $last_changed_on_disk = $row->last_modified;
-    if ($last_changed_on_disk < $last_changed) {
-      $to_update[] = $row->mid;
+  $query_result = db_select('morphbank_images', 'm')->fields('m', array('mid', 'last_modified', 'fid'))->condition('morphbank_image_id', $morphbank_image_id);
+  $on_disk = count($query_result) > 0;
+  $get_file = TRUE;
+  if ($on_disk) {
+    foreach ($query_result as $one_result) {
+      $last_changed_on_disk = $one_result->last_modified;
+      // If timestamp is same age or younger, do not get the file from Morphbank
+      if ($last_changed_on_disk >= $last_changed_on_morphbank) {
+        $get_file = FALSE;
+        $fid = $one_result->fid; // We may need this later
+      }
     }
   }
 
-  // Now we have the ID of any records in morphbank_images that need to be updated
-  // There really should only be one.
-  if (($have_record && count($to_update) > 0) || !$have_record) {
-    // Either need to update record OR record does not exist yet for this Morphbank ID
-
-    // Get the image
-    $image_location = MORPHBANK_IMAGE_URL . '?id=' . $morphbank_image_id . '&imgType=jpg';
-    $destination_directory = variable_get('file_default_scheme', 'public') . '://morphbank';
-      if (file_prepare_directory($destination_directory, FILE_CREATE_DIRECTORY)) {
-        // For the file name, will want the taxonomic name, the morphbank id, and the original file name
-        // Keeping this info will make it easier for users to find the files they are looking for
-
-        // Replace whitespace with dashes for file name
-        $name_string = preg_replace('/\s+/', '-', $term_name);
-        // Replace plus sign with dashes
-        $name_string = str_replace('+', '-', $name_string);
-        $original_filename = $response->originalFileName;
-        $new_file_name = $name_string . '-' . $morphbank_image_id . '-' . $original_filename;
-
-        if (strpos(strtolower($new_file_name), ".jpg") == 0) {
-          // No .jpg, see if there's a jpeg
-          if (strpos(strtolower($new_file_name), ".jpeg") == 0) {
-            // No .jpeg, just append .jpg
-            $new_file_name = $new_file_name . '.jpg';
-          } else {
-            // Replace .jpeg with .jpg
-            $new_file_name = str_ireplace('.jpeg', '.jpg', $new_file_name);
-          }
-        }
-        $destination = file_stream_wrapper_uri_normalize($destination_directory . '/' . $new_file_name);
-        $image = file_get_contents($image_location);
-
-        if ($image) {
-          // We have the file
-        }
-
-
-      }
-
+  if ($get_file) {
+    $original_filename = $response->originalFileName;
+    $fid = _retrieve_morphbank_image($morphbank_image_id, $term_name, $original_filename);
   }
 
+  if ($fid) {
+    $morphbank_specimen = $response->specimen;
+    $morphbank_specimen_id = (int) $morphbank_specimen->morphbank;
+    // Either (1) file has been written or (2) the image did not need to be downloaded again, either way, we have the fid
+    // Now need to check for adding links to Specimen/Observation nodes
+    _update_specimen_links($fid, $morphbank_specimen_id);
 
 
+    // Finally, check to see if any links to Specimen/Observation nodes need to be removed (say, for example, if the
+    //   Morphbank specimen ID changed)
+  }
+}
 
+/**
+ * Retrieves a jpg image file from Morphbank for passed $morphbank_image_id and saves to
+ *   public://morphbank directory.  Returns resultant fid on success, FALSE on failure.
+ *
+ * @param int $morphbank_image_id
+ *   The Morphbank ID for the image to retrieve
+ *
+ * @param string $term_name
+ *   The term name used for the query that produced this response, primarily used here
+ *   to create file name
+ *
+ * @param string $original_filename
+ *   The original name of the image file uploaded to Morphbank, primarily used here
+ *   to create file name
+ *
+ * @return If a file is retrieved from Morphbank and saved to disk, returns the fid (int)
+ *   of the file (as listed in file_managed table); if no file was saved, returns FALSE.
+ */
+function _retrieve_morphbank_image($morphbank_image_id, $term_name, $original_filename) {
+  if ($morphbank_image_id > 0) {
+    $image_location = MORPHBANK_IMAGE_URL . '?id=' . $morphbank_image_id . '&imgType=jpg';
+    $destination_directory = variable_get('file_default_scheme', 'public') . '://morphbank';
+    if (file_prepare_directory($destination_directory, FILE_CREATE_DIRECTORY)) {
+      // For the file name, will want the taxonomic name, the morphbank id, and the original file name
+      // Keeping this info will make it easier for users to find the files they are looking for
 
+      // Replace whitespace with dashes for file name
+      $name_string = preg_replace('/\s+/', '-', $term_name);
+      // Replace plus sign with dashes
+      $name_string = str_replace('+', '-', $name_string);
+      $new_file_name = $name_string . '-' . $morphbank_image_id . '-' . $original_filename;
 
+      if (strpos(strtolower($new_file_name), ".jpg") == 0) {
+        // No .jpg, see if there's a jpeg
+        if (strpos(strtolower($new_file_name), ".jpeg") == 0) {
+          // No .jpeg, just append .jpg
+          $new_file_name = $new_file_name . '.jpg';
+        } else {
+          // Replace .jpeg with .jpg
+          $new_file_name = str_ireplace('.jpeg', '.jpg', $new_file_name);
+        }
+      }
+      $destination = file_stream_wrapper_uri_normalize($destination_directory . '/' . $new_file_name);
+      $image = file_get_contents($image_location);
+      // This save sets status == 1
+      $file = file_save_data($image, $destination, FILE_EXISTS_REPLACE); // Replaces file if already exists
 
+      if (is_object($file)) {
+        $fid = $file->fid;
+        return $fid;
+      }
+    }
+  }
+  return FALSE;
+}
 
+function _update_specimen_links($fid, $morphbank_specimen_id) {
+  if ($fid > 0 && $morphbank_specimen_id > 0) {
+    $node_query = new EntityFieldQuery();
+    $node_query->endityCondition('entity_type', 'node')
+      ->entityCondition('bundle', 'specimen_observation')
+      ->fieldCondition('field_morphbank_specimen_id', 'value', $morphbank_specimen_id, '=');
+    $node_result = $node_query->execute();
+
+    if (count($node_result['node']) > 0) {
+      $node_ids = array_keys($node_result['node']);
+      $nid = $node_ids[0]; // TODO: A cludge?  Perhaps, but there should only be 0 or 1 Specimen/Observation node(s) with this Morphbank specimen ID
+      $node = node_load($nid);
+      $file = file_load($fid);
+
+      if ($file) {
+        $wrapper = entity_metadata_wrapper('node', $node);
+        if ($wrapper) {
+          $current_list = $wrapper->field_media->value();
+
+          if (!$current_list) {
+            $current_list = array();
+          }
+
+          //Make sure this file is not already attached to this node (via fid)
+          $make_link = TRUE;
+          foreach ($current_list as $list_item) {
+            if ($fid == $list_item['fid']) { // There is already a link, so no need to update
+              $make_link = FALSE;
+              break;
+            }
+          }
+
+          if ($make_link) {
+            // Have to cast the file as an array before attaching it to node
+            $file_as_array = (array)$file;
+            // Have to add a 'display' element
+            $file_as_array['display'] = 1;
+            // Add this new file to current list
+            $current_list[] = $file_as_array;
+
+            $wrapper->field_media->set($current_list);
+            $wrapper->save();
+          }
+        }
+      }
+    }
+  }
 }
