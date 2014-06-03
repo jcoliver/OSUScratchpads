@@ -5,6 +5,20 @@
  */
 
 /**
+ * The URL for the morphbank service; append 'request' for queries
+ */
+define("MORPHBANK_SERVICE", "http://services.morphbank.net/mb3/");
+//define("MORPHBANK_SERVICE_REQUEST", "http://services.morphbank.net/mb3/request");
+/**
+ * The URL for morphbank records
+ */
+define("MORPHBANK_NET_URL", "http://morphbank.net/");
+/**
+ * The URL for morphbank images
+ */
+define("MORPHBANK_IMAGE_URL", "http://images.morphbank.net/");
+
+/**
  * Implements hook_menu().
  */
 function morphbank_harvest_menu() {
@@ -25,27 +39,36 @@ function morphbank_harvest_menu() {
  * Define the form.
  */
 function morphbank_harvest_form() {
+  // Start by getting a list of all vocabularies, for select element
   $vocabularies = taxonomy_get_vocabularies();
   foreach ($vocabularies as $vocabulary) {
-//    $taxonomies['morphbank_harvest_' . $vocabulary->machine_name] = $vocabulary->name;
     $taxonomies['morphbank_harvest_' . $vocabulary->vid] = $vocabulary->name;
   }
-  $form['vid'] = array( // the name of the field is 'vid'
-//    '#title' => t('Vocabularies'),
-//    '#type' => 'textfield',
-//    '#description' => t('The place where vocabulary list will go'),
-//      'silver_import_subform_feeds' => array(
-      '#type' => 'select',
-      '#title' => '',
-      '#options' => $taxonomies,
-      '#empty_option' => t('Select vocabulary'),
-//      '#ajax' => array(
-//        'callback' => 'silver_ajax_callback',
-//        'wrapper' => 'silver_import_subform_feeds'
-//      )
-//    ),
 
+  // Make the select element
+  $form['vid'] = array( // the name of the field is 'vid'
+    '#type' => 'select',
+    '#title' => '',
+    '#options' => $taxonomies,
+    '#empty_option' => t('Select vocabulary'),
+    '#required' => TRUE,
   );
+
+  // How many images to save?  -1 means unlimited
+  $form['maximages'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Maximum number of images per taxon'),
+    '#description' => t('(enter -1 for unlimited)'),
+    '#default_value' => 10,
+  );
+
+  // Whether to search on 'unidentifieds'
+  $form['searchunid'] = array(
+    '#type' => 'checkbox',
+    '#title' => t("Include 'unidentified' in search?"),
+    '#description' => t("If checked, harvest will performed queries for any taxa with 'unidentified' in the name; if unchecked, harvest skips those terms."),
+  );
+
   $form['submit'] = array(
     '#type' => 'submit',
     '#value' => t('Harvest'),
@@ -59,22 +82,200 @@ function morphbank_harvest_form() {
  * Post-validation action on when form is submitted
  */
 function morphbank_harvest_form_submit($form, &$form_state) {
-  $vid_string = $form_state['values']['vid']; // get the selected vid
+  // Find out how many images to save
+  // TODO add check/validation for non-numeric values
+  $maximages = -1;
+  if ($form_state['values']['maximages'] > 0) {
+    $maximages = $form_state['values']['maximages'];
+  }
+
+  // See if we are to skip the unidentifieds
+  $search_unidentifieds = FALSE;
+  if ($form_state['values']['searchunid'] == 1) {
+    $search_unidentifieds = TRUE;
+  }
+
+  // get the selected vid
+  $vid_string = $form_state['values']['vid'];
   $vid = str_replace('morphbank_harvest_', '', $vid_string);
+
+  // get the corresponding taxonomy
   $taxonomy = taxonomy_get_tree($vid);
   if (!is_null($taxonomy) && count($taxonomy) > 0) {
     $terms = array();
-$tid_array = array();
+    $problem = FALSE;
+    $num_added = 0;
+    $num_changed = 0;
+    $num_deleted = 0;
     foreach ($taxonomy as $term) {
       $terms[$term->tid] = $term->name;
-$tid_array[] = $term->tid;
-    }
-$to_use = rand(0, (count($tid_array) - 1));
-$use_id = $tid_array[$to_use];
+      // We now have an array of term names.
+      // 1. Perform morphbank query  _query_morphbank
+      // 2. Process response         _process_query (return array of image Morphbank IDs?)
+      //      If no images, move to next term;
+      //      if images, loop over $maximages of them
+      // 3. Get images from Morphbank.  See commented out code in morphbank_from_id_form_submit
+      //      Check to see if file already exists using original_filename and morphbank ID?
+      //      If it isn't there save file  _write_morphbank_images
+      //      After saving file, $file = file_save_data($image, $destination, FILE_EXISTS_RENAME);
+      //      get the fid from the file object:
+      //      fid = file->fid;
+      // 4. File has been saved, now we need to see if any specimens of this taxon have morphbank_ids
+      //      If not, move to next term;
+      //      if so, loop over specimens until (morphbank_id matches) all specimens
+      //      looked at without match
+      // 5. If specimen with matching morphbank ID is found, add record to field_data_field_media
+      //      See code in morphbank_from_id_form_submit
 
-    // We now have an array of term ids and their names.  Use each one to perform a morphbank query and save the image
-drupal_set_message(t('Vocabulary term @number is @name', array('@number' => $use_id, '@name' => $terms[$use_id])));
+      // If this is unidentified, do we want to perform search?
+      $skip = FALSE;
+      if (!$search_unidentifieds) {
+        // Want to skip unidentifieds, so see if the string is in the name
+          if (strpos($term->name, 'unidentified') === FALSE) { // use === in case the name string starts with 'unidentified' (and would return zero, which would evaluate to TRUE for comparison 0 == FALSE )
+            // No 'unidentified' in string, so go ahead and include
+          } else {
+            // Found the string, so we will skip the record
+            $skip = TRUE;
+          }
+      }
+
+      if (!$skip){
+        // Make sure Morphbank is responsive
+        if (file_get_contents(MORPHBANK_SERVICE)) {
+          $responses = _query_morphbank($term->name, $maximages);
+
+          if ($responses) { // The numReturned element was not empty
+            // The query worked, so insert/update morphbank_query table
+            // TODO: insert/update morphbank_query table; get qid
+            $qid;
+
+            if ($responses === 0) { // No images were returned from query
+
+            } else { // An array of SimpleXLMObjects returned
+              foreach ($responses as $morphbank_response) {
+                _process_response($morphbank_response, $qid);
+
+              }
+            }
+
+          } else { // The numReturned element wasn't found in the response
+            $problem = TRUE;
+          }
+
+
+        } else {
+          $problem = TRUE;
+        }
+      }
+    }
+    if ($problem) {
+      drupal_set_message(t("There was a problem connecting to Morphbank's server; some images may not have been harvested."));
+    } else {
+      drupal_set_message(t('Morphbank harvest complete'));
+    }
+    drupal_set_message(t('@added images added', array('@added' => $num_added)));
+    drupal_set_message(t('@changed images added', array('@changed' => $num_changed)));
+    drupal_set_message(t('@deleted images added', array('@deleted' => $num_deleted)));
+
   } else {
     drupal_set_message(t('Empty vocabulary selected (vid = @vid)', array('@vid' => $vid)));
   }
+}
+
+/**
+ * Peform Morphbank query on passed $term_name
+ *
+ * @param string $term_name
+ *   The term name to perform Taxonomic name search on
+ *
+ * @param int $maximages
+ *   The maximum number of images to return
+ *
+ * @return array
+ *   Indexed array of XML objects correpsonding to 'object type = "Image"' elements in Morphbank response
+
+ */
+function _query_morphbank($term_name, $maximages) {
+  $search_terms = array(
+      'method' => 'taxon',
+      'objecttype' => 'Image',
+      'format' => 'svc',
+      'taxonName' => $term_name,
+      'limit' => $maximages,
+  );
+
+  // Encode the query parameters for URL
+  $encoded_parameters = array();
+  foreach ($search_terms as $key => $value) {
+    $encoded_parameters[] = urlencode($key) . '=' . urlencode($value);
+  }
+
+  // Build the query string
+  $query_string = implode('&', $encoded_parameters);
+
+  // Build the url
+  $request_url = MORPHBANK_SERVICE . 'request?' . $query_string;
+
+  // Make the request
+  $result = drupal_http_request($request_url);
+
+  //TODO: deal with error codes here
+
+  // Convert the 'data' object returned from drupal_http_request from string to an XML object
+  $response_xml = simplexml_load_string($result->data);
+
+  if (!is_null($response_xml->numReturned)) {
+    $num_returned = (int) $response_xml->numReturned;
+  }
+
+//  $store_query = TRUE;
+  if ($num_returned > 0) {
+    $response_array = array();
+    foreach ($response_xml->object as $object) {
+      $obj_attributes = $object->attributes();
+      if ($obj_attributes['type'] == "Image") {
+        $response_array[] = $object;
+      }
+    }
+  } elseif ($num_returned === 0) { // numReturned element was zero (the query went through, but no images returned
+    $response_array = 0;
+  } else { // No numReturned element, something probably went wrong
+//    $store_query = FALSE;
+    // TODO: deal with no response here
+    return FALSE;
+  }
+
+//  if ($store_query) {
+    // TODO: cache, if possible
+//  }
+  return $response_array;
+}
+
+/**
+ *
+ * @param SimpleXMLObject $response
+ *   XML object correpsonding to 'object type = "Image"' element in a Morphbank response
+ *
+ * @param int $qid
+ *   The id of the query that produced this response
+ */
+function _process_response($response, $qid) {
+  // Want to retrieve the image id
+  $source_id_element = $response->sourceId;
+  $image_id = (int) $source_id_element->morphbank;
+
+  // See if we have a record for this image ID already
+  $last_changed = $response->dateLastModified;
+  // Convert to Unix timestamp (seconds since Unix era)
+  $time = date(strtotime($last_changed));
+
+
+
+
+  $image_location = MORPHBANK_IMAGE_URL . '?id=' . $image_id . '&imgType=jpg';
+
+  $destination_directory = variable_get('file_default_scheme', 'public') . '://morphbank';
+
+
+
 }

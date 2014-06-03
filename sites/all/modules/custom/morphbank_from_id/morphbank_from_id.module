@@ -33,6 +33,13 @@ function morphbank_from_id_form() {
     '#description' => t('Please enter the Morphbank ID'),
   );
 
+    // Whether to search on 'unidentifieds'
+  $form['searchunid'] = array(
+    '#type' => 'checkbox',
+    '#title' => t("Include 'unidentified' in search?"),
+    '#description' => t("If checked, harvest will performed queries for any taxa with 'unidentified' in the name; if unchecked, harvest skips those terms."),
+  );
+
   $form['submit'] = array(
     '#type' => 'submit',
     '#value' => t('Save image'),
@@ -44,12 +51,28 @@ function morphbank_from_id_form() {
  * Post-validation action on when form is submitted
  */
 function morphbank_from_id_form_submit($form, &$form_state) {
+//  $mid_string = $form_state['values']['mid']; // get the selected morphbank image id
+//  drupal_set_message(t('MID: @mid', array('@mid' => $mid_string)));
+  // See if we are to skip the unidentifieds
+  $search_unidentifieds = FALSE;
+  if ($form_state['values']['searchunid'] == 1) {
+    $search_unidentifieds = TRUE;
+  }
+
+  if ($search_unidentifieds) {
+    drupal_set_message(t('Search includes unidentifieds'));
+  } else {
+    drupal_set_message(t('Skipping unidentifieds'));
+  }
+
+
+
+
+  /* TODO: DO NOT DELETE
+   * attaching file to node
+
   $mid_string = $form_state['values']['mid']; // get the selected morphbank image id
   $mid = (int) $mid_string;
-
-  //TODO: want to add limit=-1 to query string to return unlimited number of images...?
-  //UPDATE: Instead, just add text box with some number (20) as default and instruct
-  //  users to enter -1 if they want an unlimited number per search
 
   // We want to try:
   // 1. get a certain node (start with nid = 7)
@@ -101,8 +124,11 @@ function morphbank_from_id_form_submit($form, &$form_state) {
   } else {
     drupal_set_message(t('NO NODE FOUND IN QUERY'));
   }
+  */
+
   /*
   //TODO: DO NOT DELETE
+   * getting image from Morphbank
   if (is_numeric($mid)) {
       $image_location = 'http://images.morphbank.net/' . '?id=' . $mid . '&imgType=jpg';
       $destination_directory = variable_get('file_default_scheme', 'public') . '://morphbank';

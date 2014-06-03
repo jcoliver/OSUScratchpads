@@ -1,9 +1,9 @@
 <?php
 
 //require_once(drupal_get_path('module', 'morphbank_widget') . '/morphbank_widget.inc');
-define("MORPHBANK_SERVICE_REQUEST", "http://services.morphbank.net/mb3/request");
-define("MORPHBANK_NET_URL", "http://morphbank.net/");
-define("MORPHBANK_IMAGE_URL", "http://images.morphbank.net/");
+//define("MORPHBANK_SERVICE_REQUEST", "http://services.morphbank.net/mb3/request");
+//define("MORPHBANK_NET_URL", "http://morphbank.net/");
+//define("MORPHBANK_IMAGE_URL", "http://images.morphbank.net/");
 
 /**
  * Implements hook_block_info().
