@@ -109,6 +109,7 @@ function morphbank_harvest_form_submit($form, &$form_state) {
     $num_deleted = 0;
     foreach ($taxonomy as $term) {
       $terms[$term->tid] = $term->name;
+      $term_name = $term->name;
       // We now have an array of term names.
       // 1. Perform morphbank query  _query_morphbank
       // 2. Process response         _process_query (return array of image Morphbank IDs?)
@@ -131,7 +132,7 @@ function morphbank_harvest_form_submit($form, &$form_state) {
       $skip = FALSE;
       if (!$search_unidentifieds) {
         // Want to skip unidentifieds, so see if the string is in the name
-          if (strpos($term->name, 'unidentified') === FALSE) { // use === in case the name string starts with 'unidentified' (and would return zero, which would evaluate to TRUE for comparison 0 == FALSE )
+          if (strpos($term_name, 'unidentified') === FALSE) { // use === in case the name string starts with 'unidentified' (and would return zero, which would evaluate to TRUE for comparison 0 == FALSE )
             // No 'unidentified' in string, so go ahead and include
           } else {
             // Found the string, so we will skip the record
@@ -142,18 +143,18 @@ function morphbank_harvest_form_submit($form, &$form_state) {
       if (!$skip){
         // Make sure Morphbank is responsive
         if (file_get_contents(MORPHBANK_SERVICE)) {
-          $responses = _query_morphbank($term->name, $maximages);
+          $responses = _query_morphbank($term_name, $maximages);
 
           if ($responses) { // The numReturned element was not empty
             // The query worked, so insert/update morphbank_query table
-            // TODO: insert/update morphbank_query table; get qid
+            // TODO: insert/update morphbank_query table; then get qid
             $qid;
 
             if ($responses === 0) { // No images were returned from query
 
             } else { // An array of SimpleXLMObjects returned
               foreach ($responses as $morphbank_response) {
-                _process_response($morphbank_response, $qid);
+                _process_response($morphbank_response, $term_name);
 
               }
             }
@@ -192,7 +193,10 @@ function morphbank_harvest_form_submit($form, &$form_state) {
  *   The maximum number of images to return
  *
  * @return array
- *   Indexed array of XML objects correpsonding to 'object type = "Image"' elements in Morphbank response
+ *   If query was successful and returned objects, returns indexed array of XML objects correpsonding
+ *   to 'object type = "Image"' elements in Morphbank response; if the numReturned was 0, returns the
+ *   value 0; in the case of an unsuccessful query (or one in which the numReturned element was
+ *   missing, returns FALSE.
 
  */
 function _query_morphbank($term_name, $maximages) {
@@ -256,25 +260,75 @@ function _query_morphbank($term_name, $maximages) {
  * @param SimpleXMLObject $response
  *   XML object correpsonding to 'object type = "Image"' element in a Morphbank response
  *
- * @param int $qid
- *   The id of the query that produced this response
+ * @param string $term_name
+ *   The term name used for the query that produced this response
  */
-function _process_response($response, $qid) {
+function _process_response($response, $term_name) {
   // Want to retrieve the image id
   $source_id_element = $response->sourceId;
-  $image_id = (int) $source_id_element->morphbank;
+  $morphbank_image_id = (int) $source_id_element->morphbank;
 
   // See if we have a record for this image ID already
   $last_changed = $response->dateLastModified;
   // Convert to Unix timestamp (seconds since Unix era)
   $time = date(strtotime($last_changed));
 
+  $query_result = db_select('morphbank_images', 'm')->fields('m', array('mid', 'last_modified'))->condition('morphbank_id', $morphbank_image_id);
+  $to_update = array();
+  $have_record = FALSE;
+  foreach ($query_result as $row) {
+    $have_record = TRUE;
+    $last_changed_on_disk = $row->last_modified;
+    if ($last_changed_on_disk < $last_changed) {
+      $to_update[] = $row->mid;
+    }
+  }
+
+  // Now we have the ID of any records in morphbank_images that need to be updated
+  // There really should only be one.
+  if (($have_record && count($to_update) > 0) || !$have_record) {
+    // Either need to update record OR record does not exist yet for this Morphbank ID
+
+    // Get the image
+    $image_location = MORPHBANK_IMAGE_URL . '?id=' . $morphbank_image_id . '&imgType=jpg';
+    $destination_directory = variable_get('file_default_scheme', 'public') . '://morphbank';
+      if (file_prepare_directory($destination_directory, FILE_CREATE_DIRECTORY)) {
+        // For the file name, will want the taxonomic name, the morphbank id, and the original file name
+        // Keeping this info will make it easier for users to find the files they are looking for
+
+        // Replace whitespace with dashes for file name
+        $name_string = preg_replace('/\s+/', '-', $term_name);
+        // Replace plus sign with dashes
+        $name_string = str_replace('+', '-', $name_string);
+        $original_filename = $response->originalFileName;
+        $new_file_name = $name_string . '-' . $morphbank_image_id . '-' . $original_filename;
+
+        if (strpos(strtolower($new_file_name), ".jpg") == 0) {
+          // No .jpg, see if there's a jpeg
+          if (strpos(strtolower($new_file_name), ".jpeg") == 0) {
+            // No .jpeg, just append .jpg
+            $new_file_name = $new_file_name . '.jpg';
+          } else {
+            // Replace .jpeg with .jpg
+            $new_file_name = str_ireplace('.jpeg', '.jpg', $new_file_name);
+          }
+        }
+        $destination = file_stream_wrapper_uri_normalize($destination_directory . '/' . $new_file_name);
+        $image = file_get_contents($image_location);
+
+        if ($image) {
+          // We have the file
+        }
+
+
+      }
+
+  }
 
 
 
-  $image_location = MORPHBANK_IMAGE_URL . '?id=' . $image_id . '&imgType=jpg';
 
-  $destination_directory = variable_get('file_default_scheme', 'public') . '://morphbank';
+
 
 
 

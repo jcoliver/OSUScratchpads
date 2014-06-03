@@ -54,7 +54,7 @@ function morphbank_harvest_disable() {
 function morphbank_harvest_schema() {
   $schema = array();
   // Table to hold queries
-  $schema['morphbank_query'] = array(
+  $schema['morphbank_query'] = array( //TODO: How useful is this table, really?
     'fields' => array(
       'qid' => array(
         'description' => 'Primary key',
@@ -107,6 +107,12 @@ function morphbank_harvest_schema() {
         'description' => 'The morphbank ID of the image',
         'type' => 'int',
         'size' => 'normal',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'last_modified' => array(
+        'description' => 'The date, as Unix timestamp, the Morphbank image record was last modified',
+        'type' => 'int',
         'not null' => TRUE,
         'default' => 0,
       ),
