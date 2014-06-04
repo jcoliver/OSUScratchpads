@@ -60,13 +60,22 @@ function morphbank_harvest_form() {
     '#title' => t('Maximum number of images per taxon'),
     '#description' => t('(enter -1 for unlimited)'),
     '#default_value' => 10,
+    '#element_validate' => array('element_validate_integer'),
   );
 
   // Whether to search on 'unidentifieds'
   $form['searchunid'] = array(
     '#type' => 'checkbox',
     '#title' => t("Include 'unidentified' in search?"),
-    '#description' => t("If checked, harvest will performed queries for any taxa with 'unidentified' in the name; if unchecked, harvest skips those terms."),
+    '#description' => t("If checked, harvest will perform queries for any taxa with 'unidentified' in the name; if unchecked, harvest skips those terms."),
+  );
+
+  // Whether to remove images that are no longer returned in search
+  $form['removeold'] = array(
+    '#type' => 'checkbox',
+    '#title' => t("Remove images no longer returned in query?"),
+    '#description' => t("If checked, harvest will remove image files that are stored in Scratchpads, but are no longer returned by query; if unchecked, files that do not correspond to any records returned during this harvest will remain on disk."),
+    '#default_value' => 1,
   );
 
   $form['submit'] = array(
@@ -76,14 +85,20 @@ function morphbank_harvest_form() {
   return $form;
 }
 
-// TODO any additional validation?
+function morphbank_harvest_form_validate($form, &$form_state) {
+  $max_images = $form_state['values']['maximages'];
+  if (is_numeric($max_images)) {
+    if ($max_images < -1 || $max_images === 0){
+      form_set_error('maximages', t('Maximum number of images per taxon must be a positive integer or equal -1 (@maximages is not a valid value).', array('@maximages' => $max_images)));
+    }
+  }
+}
 
 /**
  * Post-validation action on when form is submitted
  */
 function morphbank_harvest_form_submit($form, &$form_state) {
   // Find out how many images to save
-  // TODO add check/validation for non-numeric values
   $maximages = -1;
   if ($form_state['values']['maximages'] > 0) {
     $maximages = $form_state['values']['maximages'];
@@ -93,6 +108,12 @@ function morphbank_harvest_form_submit($form, &$form_state) {
   $search_unidentifieds = FALSE;
   if ($form_state['values']['searchunid'] == 1) {
     $search_unidentifieds = TRUE;
+  }
+
+  // See if we are to remove images not returned in this latest harvest
+  $remove_old_files = FALSE;
+  if ($form_state['values']['removeold'] == 1) {
+    $remove_old_files = TRUE;
   }
 
   // get the selected vid
@@ -107,6 +128,7 @@ function morphbank_harvest_form_submit($form, &$form_state) {
     $num_added = 0;
     $num_changed = 0;
     $num_deleted = 0;
+    $num_no_images = 0;
     foreach ($taxonomy as $term) {
       $terms[$term->tid] = $term->name;
       $term_name = $term->name;
@@ -145,17 +167,18 @@ function morphbank_harvest_form_submit($form, &$form_state) {
         if (file_get_contents(MORPHBANK_SERVICE)) {
           $responses = _query_morphbank($term_name, $maximages);
 
-          if ($responses) { // The numReturned element was not empty
-            // The query worked, so insert/update morphbank_query table
-            // TODO: insert/update morphbank_query table; then get qid
-            $qid;
+          if (is_array($responses)) { // The numReturned element was not empty (see _query_morphbank)
 
-            if ($responses === 0) { // No images were returned from query
-
+            if (count($responses) == 0) { // No images were returned from query
+              $num_no_images++;
             } else { // An array of SimpleXLMObjects returned
               foreach ($responses as $morphbank_response) {
-                _process_response($morphbank_response, $term_name);
-
+                $result = _process_response($morphbank_response, $term_name);
+                if ($result == 'a') {
+                  $num_added++;
+                } elseif ($result == 'c') {
+                  $num_changed++;
+                }
               }
             }
 
@@ -172,11 +195,16 @@ function morphbank_harvest_form_submit($form, &$form_state) {
     if ($problem) {
       drupal_set_message(t("There was a problem connecting to Morphbank's server; some images may not have been harvested."));
     } else {
+      // No problems, remove old files, if appropriate
+      if ($remove_old_files) {
+        // TODO: Start work here
+      }
       drupal_set_message(t('Morphbank harvest complete'));
     }
     drupal_set_message(t('@added images added', array('@added' => $num_added)));
     drupal_set_message(t('@changed images added', array('@changed' => $num_changed)));
     drupal_set_message(t('@deleted images added', array('@deleted' => $num_deleted)));
+    drupal_set_message(t('@no_images terms had no corresponding images on Morphbank', array('@no_images' => $num_no_images)));
 
   } else {
     drupal_set_message(t('Empty vocabulary selected (vid = @vid)', array('@vid' => $vid)));
@@ -192,12 +220,11 @@ function morphbank_harvest_form_submit($form, &$form_state) {
  * @param int $maximages
  *   The maximum number of images to return
  *
- * @return array
+ * @return mixed
  *   If query was successful and returned objects, returns indexed array of XML objects correpsonding
- *   to 'object type = "Image"' elements in Morphbank response; if the numReturned was 0, returns the
- *   value 0; in the case of an unsuccessful query (or one in which the numReturned element was
- *   missing, returns FALSE.
-
+ *   to 'object type = "Image"' elements in Morphbank response; if the numReturned was 0, returns an
+ *   empty array; in the case of an unsuccessful query (or one in which the numReturned element was
+ *   missing from resultant XML), returns FALSE.
  */
 function _query_morphbank($term_name, $maximages) {
   $search_terms = array(
@@ -228,11 +255,24 @@ function _query_morphbank($term_name, $maximages) {
   // Convert the 'data' object returned from drupal_http_request from string to an XML object
   $response_xml = simplexml_load_string($result->data);
 
+  if (is_null($response_xml->numReturned)) { // No numReturned element, something probably went wrong
+    return FALSE;
+  }
+
+  $response_array = array();
+  foreach ($response_xml->object as $object) {
+    $obj_attributes = $object->attributes();
+    if ($obj_attributes['type'] == "Image") {
+      $response_array[] = $object;
+    }
+  }
+
+  return $response_array;
+
+  /*
   if (!is_null($response_xml->numReturned)) {
     $num_returned = (int) $response_xml->numReturned;
   }
-
-//  $store_query = TRUE;
   if ($num_returned > 0) {
     $response_array = array();
     foreach ($response_xml->object as $object) {
@@ -244,15 +284,10 @@ function _query_morphbank($term_name, $maximages) {
   } elseif ($num_returned === 0) { // numReturned element was zero (the query went through, but no images returned
     $response_array = 0;
   } else { // No numReturned element, something probably went wrong
-//    $store_query = FALSE;
-    // TODO: deal with no response here
     return FALSE;
   }
-
-//  if ($store_query) {
-    // TODO: cache, if possible...maybe not
-//  }
   return $response_array;
+*/
 }
 
 /**
@@ -269,15 +304,10 @@ function _query_morphbank($term_name, $maximages) {
  *   Morphbank, renames the file, and saves the file to the public://morphbank
  *   directory.
  *
- * Regardless of age of record, retrieves fid of file (which may have just been
- *   created or updated) AND the Morphbank ID of the specimen record for the image.
- *   Checks to see:
- *     (1) If any Scratchpads Specimen/Observation nodes have the same Morphbank ID.
- *       If so, see if they are linked in the field_data_field_media table; if not,
- *       links them using entity wrapper.
- *     (2) If any Scratchpads Specimen/Observation nodes are linked to the image
- *       in the field_data_field_media table that do *not* have the same specimen
- *       Morphbank ID, removes links using entity wrapper
+ * Calls _update_specimen_links to update links between image files and Specimen/
+ *   Observation nodes.
+ *
+ * Calls _remove_outdated_links to remove any links that are no longer appropriate.
  *
  * @param SimpleXMLObject $response
  *   XML object correpsonding to 'object type = "Image"' element in a Morphbank response
@@ -285,8 +315,17 @@ function _query_morphbank($term_name, $maximages) {
  * @param string $term_name
  *   The term name used for the query that produced this response, primarily used here
  *   to create file name
+ * @return mixed
+ *   If record successfully processed, returns 'a' for images that were not previously in
+ *   database (but are now) and returns 'c' for images that were in database, but had
+ *   changed since last harvest (and are now updated).  If record was not successfully
+ *   processed, returns FALSE.
+ *
+ * @see _update_specimen_links
+ * @see _remove_outdated_links
  */
 function _process_response($response, $term_name) {
+  $to_return = FALSE;
   // Want to retrieve the image id
   $source_id_element = $response->sourceId;
   $morphbank_image_id = (int) $source_id_element->morphbank;
@@ -302,7 +341,8 @@ function _process_response($response, $term_name) {
   if ($on_disk) {
     foreach ($query_result as $one_result) {
       $last_changed_on_disk = $one_result->last_modified;
-      // If timestamp is same age or younger, do not get the file from Morphbank
+      $mid = $one_result->mid;
+      // If timestamp is same age or younger, do not get the image file from Morphbank
       if ($last_changed_on_disk >= $last_changed_on_morphbank) {
         $get_file = FALSE;
         $fid = $one_result->fid; // We may need this later
@@ -318,14 +358,53 @@ function _process_response($response, $term_name) {
   if ($fid) {
     $morphbank_specimen = $response->specimen;
     $morphbank_specimen_id = (int) $morphbank_specimen->morphbank;
+
+    // Perform update/insert on morphbank_images table as appropriate
+    if ($get_file) { // Did we add/update the file?
+      if ($on_disk) { // Updated (changed)
+        if ($mid > 0) { // We have the id of the record in morphbank_images that we need to update
+          $num_updated = db_update('morphbank_images')
+            ->fields(array(
+              'morphbank_image_id' => $morphbank_image_id,
+              'last_modified' => $last_changed_on_morphbank,
+              'morphbank_specimen_id' => $morphbank_specimen_id,
+              'fid' => $fid,
+              'original_filename' => "{$original_filename}",
+            ))
+            ->condition('mid', $mid, '=')
+            ->execute();
+
+          if ($num_updated > 0) {
+            $to_return = 'c';
+          }
+        }
+      } else { // Added (image was not already on disk)
+        // Insert a new record into morphbank_images
+        $mid = db_insert('morphbank_images')
+          ->fields(array(
+            'morphbank_image_id' => $morphbank_image_id,
+            'last_modified' => $last_changed_on_morphbank,
+            'morphbank_specimen_id' => $morphbank_specimen_id,
+            'fid' => $fid,
+            'original_filename' => "{$original_filename}",
+          ))
+          ->execute();
+        if ($mid > 0) {
+          $to_return = 'a';
+        }
+      }
+    }
+
     // Either (1) file has been written or (2) the image did not need to be downloaded again, either way, we have the fid
     // Now need to check for adding links to Specimen/Observation nodes
     _update_specimen_links($fid, $morphbank_specimen_id);
 
-
     // Finally, check to see if any links to Specimen/Observation nodes need to be removed (say, for example, if the
     //   Morphbank specimen ID changed)
+    _remove_outdated_links($fid, $morphbank_specimen_id);
   }
+
+  return $to_return;
 }
 
 /**
@@ -343,7 +422,8 @@ function _process_response($response, $term_name) {
  *   The original name of the image file uploaded to Morphbank, primarily used here
  *   to create file name
  *
- * @return If a file is retrieved from Morphbank and saved to disk, returns the fid (int)
+ * @return mixed
+ *   If a file is retrieved from Morphbank and saved to disk, returns the fid (int)
  *   of the file (as listed in file_managed table); if no file was saved, returns FALSE.
  */
 function _retrieve_morphbank_image($morphbank_image_id, $term_name, $original_filename) {
@@ -384,6 +464,17 @@ function _retrieve_morphbank_image($morphbank_image_id, $term_name, $original_fi
   return FALSE;
 }
 
+/**
+ * Links any Scratchpads Specimen/Observation nodes with $morphank_specimen_id to
+ *   the passed $fid (via the field_media field).  Skips nodes that are already
+ *   linked to this $fid.
+ *
+ * @param int $fid
+ *   The id of the file
+ *
+ * @param int $morphbank_specimen_id
+ *   The Morphbank ID of the specimen
+ */
 function _update_specimen_links($fid, $morphbank_specimen_id) {
   if ($fid > 0 && $morphbank_specimen_id > 0) {
     $node_query = new EntityFieldQuery();
@@ -425,6 +516,59 @@ function _update_specimen_links($fid, $morphbank_specimen_id) {
             $current_list[] = $file_as_array;
 
             $wrapper->field_media->set($current_list);
+            $wrapper->save();
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Removes any obsolete links between Specimen/Observation nodes and images
+ * harvested from Morphbank.
+ *
+ * If any Scratchpads Specimen/Observation nodes that are linked to the image
+ *   in the field_data_field_media table do *not* have the same specimen
+ *   Morphbank ID, removes links using entity wrapper
+
+ * @param int $fid
+ *   The id of the file
+ *
+ * @param int $morphbank_specimen_id
+ *   The Morphbank ID of the specimen
+ */
+function _remove_outdated_links($fid, $morphbank_specimen_id) {
+  if ($fid > 0 && $morphbank_specimen_id > 0) {
+    // First grab all the nodes that are associated with this $fid
+    $node_query = db_select('field_data_field_media', 'f')
+      ->fields('f', array('entity_id'))
+      ->condition('entity_type', 'node', '=')
+      ->condition('bundle', 'specimen_observation', '=')
+      ->condition('field_media_fid', $fid, '=')
+      ->execute();
+
+    // Now see if any DO NOT have the same $morphbank_specimen_id
+    foreach ($node_query as $result) {
+      $nid = $result['entity_id'];
+      $node = node_load($nid);
+      $wrapper = entity_metadata_wrapper('node', $node);
+      $node_mb_id = $wrapper->field_morphbank_specimen_id;
+      if ($node_mb_id != $morphbank_specimen_id) {
+        // Remove links for those without appropriate $morphbank_specimen_id
+        $current_list = $wrapper->field_media->value();
+        if ($current_list) { // Hmmm...uncertain if $current_list would ever be empty (FALSE) at this point
+          $new_list = array();
+          $changed = FALSE;
+          foreach ($current_list as $list_item) {
+            if ($list_item['fid'] == $fid) { // Same fid, remove link by omitting from list
+              $changed = TRUE;
+            } else { // Different fid, keep link
+              $new_list[] = $list_item;
+            }
+          }
+          if ($changed) { // At least one link was dropped, so save the new list
+            $wrapper->field_media->set($new_list);
             $wrapper->save();
           }
         }
