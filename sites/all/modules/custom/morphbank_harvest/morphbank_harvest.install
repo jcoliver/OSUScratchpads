@@ -2,7 +2,14 @@
 /**
  * @file  Initial installation of morphbank_harvest module
  *
- * Sets up two tables used in record-keeping.
+ * In enable/install, sets up
+ *   one field, field_morphank_specimen_id
+ *   two tables, morphbank_queries and morphbank_images, for record keeping
+ *
+ * In disable,
+ *   removes field_morphbank_specimen_id
+ *   removes links to specimens (in field_data_field_media)
+ *   deletes files
  */
 
 /**
@@ -16,7 +23,11 @@ function morphbank_harvest_enable() {
     'deleted' => '0',
     'entity_types' => array(),
     'field_name' => 'field_morphbank_specimen_id',
-    'type' => 'text',
+//    'type' => 'text',
+    'unsigned' => TRUE,
+    'type' => 'int',
+    'size' => 'normal',
+    'description' => t('The unique identifier for this specimen in the Morphbank system.'),
   );
   $field = field_create_field($field);
 
@@ -28,24 +39,24 @@ function morphbank_harvest_enable() {
     'type' => 'text',
     'label' => t('Morphbank Specimen ID'),
     'required' => 0,
-    'widget' => array(
-      'type' => 'text_textfield',
-    ),
+//    'widget' => array(
+//      'type' => 'text_textfield',
+//    ),
     'default_value' => NULL,
     'deleted' => '0',
-    'description' => '',
-    'display' => array(
-      'default' => array(
-        'label' => 'above',
-        'type' => 'text',
-      ),
-      'teaser' => array(
-        'label' => 'above',
-        'settings' => array(),
-        'type' => 'hidden',
-        'weight' => 0
-      ),
-    ),
+    'description' => t('The unique identifier for this specimen in the Morphbank system.'),
+//    'display' => array(
+//      'default' => array(
+//        'label' => 'above',
+//        'type' => 'text',
+//      ),
+//      'teaser' => array(
+//        'label' => 'above',
+//        'settings' => array(),
+//        'type' => 'hidden',
+//        'weight' => 0
+//      ),
+ //   ),
   );
   field_create_instance($instance);
 
@@ -76,6 +87,7 @@ function morphbank_harvest_disable() {
   db_delete('field_data_field_media')->condition('field_media_fid', $fids, 'IN')->execute();
 
   // Next delete records from file_usage table
+  //TODO:  These are managed files, is this step necessary?
   db_delete('file_usage')->condition('fid', $fids, 'IN')->execute();
 
   // Remove the files themselves
@@ -94,9 +106,9 @@ function morphbank_harvest_disable() {
  */
 function morphbank_harvest_schema() {
   $schema = array();
-  /*
+  /**/
   // Table to hold queries
-  $schema['morphbank_query'] = array(
+  $schema['morphbank_queries'] = array(
     'fields' => array(
       'qid' => array(
         'description' => 'Primary key',
@@ -105,12 +117,24 @@ function morphbank_harvest_schema() {
         'not null' => TRUE,
       ),
       'query' => array(
-        'description' => 'The URL submitted as query',
+        'description' => 'The query details in a query string format',
         'type' => 'text',
         'size' => 'normal',
         'not null' => TRUE,
       ),
-      'date_created' => array(
+      'execution_date' => array(
+        'description' => 'The date, as Unix timestamp, this query was executed',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'problem' => array(
+        'description' => 'Boolean to indicate if problems were encountered during the query',
+        'type' => 'tinyint',
+        'not null' => TRUE,
+        'default' => 0,
+      )
+/*      'date_created' => array(
         'description' => 'The date, as Unix timestamp, this query was created',
         'type' => 'int',
         'not null' => TRUE,
@@ -121,14 +145,14 @@ function morphbank_harvest_schema() {
         'type' => 'int',
         'not null' => TRUE,
         'default' => 0,
-      ),
+      ),*/
     ),
     //TODO: Consider adding indexes?
     'primary key' => array(
       'qid'
     ),
   );
-  */
+  /**/
   // Table to hold image information
   $schema['morphbank_images'] = array(
     'fields' => array(

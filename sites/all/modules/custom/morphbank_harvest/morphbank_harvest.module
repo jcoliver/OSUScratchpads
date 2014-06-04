@@ -8,11 +8,12 @@
  * The URL for the morphbank service; append 'request' for queries
  */
 define("MORPHBANK_SERVICE", "http://services.morphbank.net/mb3/");
-//define("MORPHBANK_SERVICE_REQUEST", "http://services.morphbank.net/mb3/request");
+
 /**
  * The URL for morphbank records
  */
 define("MORPHBANK_NET_URL", "http://morphbank.net/");
+
 /**
  * The URL for morphbank images
  */
@@ -22,8 +23,7 @@ define("MORPHBANK_IMAGE_URL", "http://images.morphbank.net/");
  * Implements hook_menu().
  */
 function morphbank_harvest_menu() {
-  // e.g. go to localhost/OSUScratchpads/morphbank_harvest to access the form
-//  $items['morphbank_harvest'] = array(
+  // TODO: include date of last harvest when presenting form
   $items['admin/config/system/morphbank_harvest'] = array(
     'title' => 'Morphbank harvest',
     'description' => t('Harvests images from Morphbank for a given vocabulary'),
@@ -127,85 +127,128 @@ function morphbank_harvest_form_submit($form, &$form_state) {
     $problem = FALSE;
     $num_added = 0;
     $num_changed = 0;
+    $num_unchanged = 0;
     $num_deleted = 0;
     $num_no_images = 0;
-    foreach ($taxonomy as $term) {
-      $terms[$term->tid] = $term->name;
-      $term_name = $term->name;
-      // We now have an array of term names.
-      // 1. Perform morphbank query  _query_morphbank
-      // 2. Process response         _process_query (return array of image Morphbank IDs?)
-      //      If no images, move to next term;
-      //      if images, loop over $maximages of them
-      // 3. Get images from Morphbank.  See commented out code in morphbank_from_id_form_submit
-      //      Check to see if file already exists using original_filename and morphbank ID?
-      //      If it isn't there save file  _write_morphbank_images
-      //      After saving file, $file = file_save_data($image, $destination, FILE_EXISTS_RENAME);
-      //      get the fid from the file object:
-      //      fid = file->fid;
-      // 4. File has been saved, now we need to see if any specimens of this taxon have morphbank_ids
-      //      If not, move to next term;
-      //      if so, loop over specimens until (morphbank_id matches) all specimens
-      //      looked at without match
-      // 5. If specimen with matching morphbank ID is found, add record to field_data_field_media
-      //      See code in morphbank_from_id_form_submit
 
-      // If this is unidentified, do we want to perform search?
-      $skip = FALSE;
-      if (!$search_unidentifieds) {
-        // Want to skip unidentifieds, so see if the string is in the name
+    // Before cycling over taxonomy, add a record to morphbank_queries table
+    $query = "?" . "searchunid=" . $search_unidentifieds . "&maximages=" . $maximages . "&removeold=" . $remove_old_files;
+    $timestamp = time();
+
+    $qid = db_insert('morphbank_queries')
+      ->fields(array(
+        'query' => $query,
+        'execution_date' => $timestamp,
+      ))->execute();
+
+    if ($qid > 0) {
+
+      foreach ($taxonomy as $term) {
+        $terms[$term->tid] = $term->name;
+        $term_name = $term->name;
+        // We now have an array of term names.
+        // 1. Perform morphbank query  _query_morphbank
+        // 2. Process response         _process_query (return array of image Morphbank IDs?)
+        //      If no images, move to next term;
+        //      if images, loop over $maximages of them
+        // 3. Get images from Morphbank.  See commented out code in morphbank_from_id_form_submit
+        //      Check to see if file already exists using original_filename and morphbank ID?
+        //      If it isn't there save file  _write_morphbank_images
+        //      After saving file, $file = file_save_data($image, $destination, FILE_EXISTS_RENAME);
+        //      get the fid from the file object:
+        //      fid = file->fid;
+        // 4. File has been saved, now we need to see if any specimens of this taxon have morphbank_ids
+        //      If not, move to next term;
+        //      if so, loop over specimens until (morphbank_id matches) all specimens
+        //      looked at without match
+        // 5. If specimen with matching morphbank ID is found, add record to field_data_field_media
+        //      See code in morphbank_from_id_form_submit
+
+        // If this is unidentified, do we want to perform search?
+        $skip = FALSE;
+        if (!$search_unidentifieds) {
+          // Want to skip unidentifieds, so see if the string is in the name
           if (strpos($term_name, 'unidentified') === FALSE) { // use === in case the name string starts with 'unidentified' (and would return zero, which would evaluate to TRUE for comparison 0 == FALSE )
             // No 'unidentified' in string, so go ahead and include
           } else {
             // Found the string, so we will skip the record
             $skip = TRUE;
           }
-      }
+        }
 
-      if (!$skip){
-        // Make sure Morphbank is responsive
-        if (file_get_contents(MORPHBANK_SERVICE)) {
-          $responses = _query_morphbank($term_name, $maximages);
+        if (!$skip){
+          // Make sure Morphbank is responsive
+          if (file_get_contents(MORPHBANK_SERVICE)) {
+            $responses = _query_morphbank($term_name, $maximages);
 
-          if (is_array($responses)) { // The numReturned element was not empty (see _query_morphbank)
+            if (is_array($responses)) { // The numReturned element was not empty (see _query_morphbank)
 
-            if (count($responses) == 0) { // No images were returned from query
-              $num_no_images++;
-            } else { // An array of SimpleXLMObjects returned
-              foreach ($responses as $morphbank_response) {
-                $result = _process_response($morphbank_response, $term_name);
-                if ($result == 'a') {
-                  $num_added++;
-                } elseif ($result == 'c') {
-                  $num_changed++;
+              if (count($responses) == 0) { // No images were returned from query
+                $num_no_images++;
+              } else { // An array of SimpleXLMObjects returned
+                foreach ($responses as $morphbank_response) {
+                  $result = _process_response($morphbank_response, $term_name, $qid);
+                  switch ($result) {
+                    case 'a':
+                      $num_added++;
+                      break;
+                    case 'c':
+                      $num_changed++;
+                      break;
+                    case 'u':
+                      $num_unchanged++;
+                      break;
+                  }
                 }
               }
-            }
 
-          } else { // The numReturned element wasn't found in the response
+            } else { // The numReturned element wasn't found in the response
+              $problem = TRUE;
+            }
+          } else { // Morphbank is unresponsive
             $problem = TRUE;
           }
-
-
-        } else {
-          $problem = TRUE;
         }
       }
-    }
-    if ($problem) {
-      drupal_set_message(t("There was a problem connecting to Morphbank's server; some images may not have been harvested."));
-    } else {
-      // No problems, remove old files, if appropriate
-      if ($remove_old_files) {
-        // TODO: Start work here
-      }
-      drupal_set_message(t('Morphbank harvest complete'));
-    }
-    drupal_set_message(t('@added images added', array('@added' => $num_added)));
-    drupal_set_message(t('@changed images added', array('@changed' => $num_changed)));
-    drupal_set_message(t('@deleted images added', array('@deleted' => $num_deleted)));
-    drupal_set_message(t('@no_images terms had no corresponding images on Morphbank', array('@no_images' => $num_no_images)));
 
+      if ($problem) {
+        drupal_set_message(t("There was a problem connecting to Morphbank's server; some images may not have been harvested."));
+        // And update the record in morphbank_queries to reflect there was a problem
+        $num_updated = db_update('morphbank_queries')
+          ->fields(array(
+            'problem' => 1,
+          ))
+          ->condition('qid', $qid, "=")
+          ->execute();
+      } else {
+        //TODO: Need cleanup first by removing links to specimens?
+
+        // If no problems, remove old files, if appropriate
+        if ($remove_old_files) {
+          $files_to_remove = db_select('morphbank_images', 'm')
+            ->fields('m', 'fid')
+            ->condition('qid', $qid, '<>')
+            ->execute();
+          $fids_remove = array();
+          foreach ($files_to_remove as $to_remove) {
+            $fids_remove[] = $to_remove['fid'];
+          }
+          // Remove the files
+          $files = file_load_multiple($fids_remove);
+          foreach ($files as $file) {
+            file_delete($file);
+            $num_deleted++;
+          }
+        }
+        drupal_set_message(t('Morphbank harvest complete'));
+      }
+
+      drupal_set_message(t('@added images added', array('@added' => $num_added)));
+      drupal_set_message(t('@changed images updated', array('@changed' => $num_changed)));
+      drupal_set_message(t('@unchanged images unchanged', array('@unchanged' => $num_unchanged)));
+      drupal_set_message(t('@deleted images deleted', array('@deleted' => $num_deleted)));
+      drupal_set_message(t('@no_images terms had no corresponding images on Morphbank', array('@no_images' => $num_no_images)));
+    } // failed to insert morphbank_queries record
   } else {
     drupal_set_message(t('Empty vocabulary selected (vid = @vid)', array('@vid' => $vid)));
   }
@@ -250,7 +293,10 @@ function _query_morphbank($term_name, $maximages) {
   // Make the request
   $result = drupal_http_request($request_url);
 
-  //TODO: deal with error codes here
+  if ($result->error) {
+    //TODO: deal with error codes here
+  }
+
 
   // Convert the 'data' object returned from drupal_http_request from string to an XML object
   $response_xml = simplexml_load_string($result->data);
@@ -307,7 +353,8 @@ function _query_morphbank($term_name, $maximages) {
  * Calls _update_specimen_links to update links between image files and Specimen/
  *   Observation nodes.
  *
- * Calls _remove_outdated_links to remove any links that are no longer appropriate.
+ * Calls _remove_outdated_links to remove any links that are no longer appropriate (e.g.
+ *   if the Morphbank specimen ID has changed).
  *
  * @param SimpleXMLObject $response
  *   XML object correpsonding to 'object type = "Image"' element in a Morphbank response
@@ -315,26 +362,28 @@ function _query_morphbank($term_name, $maximages) {
  * @param string $term_name
  *   The term name used for the query that produced this response, primarily used here
  *   to create file name
+ *
  * @return mixed
  *   If record successfully processed, returns 'a' for images that were not previously in
- *   database (but are now) and returns 'c' for images that were in database, but had
- *   changed since last harvest (and are now updated).  If record was not successfully
- *   processed, returns FALSE.
+ *   database (but are now); returns 'c' for images that were in database, but had
+ *   changed since last harvest (and are now updated); and returns 'u' for images that
+ *   were in the database and returned in query, but had not changed since the last
+ *   harvest (and were thus not updated, although the qid is updated).  If record was
+ *   not successfully processed, returns FALSE.
  *
  * @see _update_specimen_links
  * @see _remove_outdated_links
  */
-function _process_response($response, $term_name) {
+function _process_response($response, $term_name, $qid) {
   $to_return = FALSE;
   // Want to retrieve the image id
   $source_id_element = $response->sourceId;
   $morphbank_image_id = (int) $source_id_element->morphbank;
 
-  // See if we have a record for this image ID already
-  $last_changed = $response->dateLastModified; //TODO: delete or change the name of this variable
   // Convert to Unix timestamp (seconds since Unix era)
   $last_changed_on_morphbank = date(strtotime($response->dateLastModified));
 
+  // See if we have a record for this image ID already
   $query_result = db_select('morphbank_images', 'm')->fields('m', array('mid', 'last_modified', 'fid'))->condition('morphbank_image_id', $morphbank_image_id);
   $on_disk = count($query_result) > 0;
   $get_file = TRUE;
@@ -369,6 +418,7 @@ function _process_response($response, $term_name) {
               'last_modified' => $last_changed_on_morphbank,
               'morphbank_specimen_id' => $morphbank_specimen_id,
               'fid' => $fid,
+              'qid' => $qid,
               'original_filename' => "{$original_filename}",
             ))
             ->condition('mid', $mid, '=')
@@ -386,6 +436,7 @@ function _process_response($response, $term_name) {
             'last_modified' => $last_changed_on_morphbank,
             'morphbank_specimen_id' => $morphbank_specimen_id,
             'fid' => $fid,
+            'qid' => $qid,
             'original_filename' => "{$original_filename}",
           ))
           ->execute();
@@ -393,7 +444,20 @@ function _process_response($response, $term_name) {
           $to_return = 'a';
         }
       }
+    } else { // We did not retrieve the file (dates of last change match), but it was returned in the query, so update qid in morphbank_images
+      // If record is not updated with qid, it will be deleted if user selects remove old files
+      if ($mid > 0) {
+        $num_updated = db_update('morphbank_images')
+          ->fields(array(
+            'qid' => $qid,
+          ))->condition('mid', $mid, '=')
+          ->execute();
+        if ($num_updated > 0) {
+          $to_return = 'u';
+        }
+      }
     }
+
 
     // Either (1) file has been written or (2) the image did not need to be downloaded again, either way, we have the fid
     // Now need to check for adding links to Specimen/Observation nodes
