@@ -4,6 +4,8 @@
  * Harvest images from Morphbank for a selected vocabulary
  */
 
+//TODO: For this to work with ~500 terms, had to change browser timeout to 60 seconds
+
 /**
  * The URL for the morphbank service; append 'request' for queries
  */
@@ -23,7 +25,7 @@ define("MORPHBANK_IMAGE_URL", "http://images.morphbank.net/");
  * Implements hook_menu().
  */
 function morphbank_harvest_menu() {
-  // TODO: include date of last harvest when presenting form
+  // TODO: include date of last harvest when presenting form (in description?)
   $items['admin/config/system/morphbank_harvest'] = array(
     'title' => 'Morphbank harvest',
     'description' => t('Harvests images from Morphbank for a given vocabulary'),
@@ -66,15 +68,22 @@ function morphbank_harvest_form() {
   // Whether to search on 'unidentifieds'
   $form['searchunid'] = array(
     '#type' => 'checkbox',
-    '#title' => t("Include 'unidentified' in search?"),
+    '#title' => t("Include 'unidentified' in search"),
     '#description' => t("If checked, harvest will perform queries for any taxa with 'unidentified' in the name; if unchecked, harvest skips those terms."),
   );
 
   // Whether to remove images that are no longer returned in search
   $form['removeold'] = array(
     '#type' => 'checkbox',
-    '#title' => t("Remove images no longer returned in query?"),
+    '#title' => t("Remove images no longer returned in query"),
     '#description' => t("If checked, harvest will remove image files that are stored in Scratchpads, but are no longer returned by query; if unchecked, files that do not correspond to any records returned during this harvest will remain on disk."),
+    '#default_value' => 1,
+  );
+
+  $form['restrictranks'] = array(
+    '#type' => 'checkbox',
+    '#title' => t("Restrict harvest to terms of rank species and below"),
+    '#description' => t("If checked, harvest will only perform Morphbank queries for terms of the following ranks: form, species, subform, subspecies, subvariety, variety"),
     '#default_value' => 1,
   );
 
@@ -98,6 +107,9 @@ function morphbank_harvest_form_validate($form, &$form_state) {
  * Post-validation action on when form is submitted
  */
 function morphbank_harvest_form_submit($form, &$form_state) {
+
+$time_start = time();
+
   // Find out how many images to save
   $maximages = -1;
   if ($form_state['values']['maximages'] > 0) {
@@ -116,6 +128,13 @@ function morphbank_harvest_form_submit($form, &$form_state) {
     $remove_old_files = TRUE;
   }
 
+  // See if we are restricting the ranks to perform harvest on
+  $restrict_ranks = FALSE;
+  if ($form_state['values']['restrictranks'] == 1) {
+    $restrict_ranks = TRUE;
+    $ranks_to_harvest = array('form', 'species', 'subform', 'subspecies', 'subvariety', 'variety');
+  }
+
   // get the selected vid
   $vid_string = $form_state['values']['vid'];
   $vid = str_replace('morphbank_harvest_', '', $vid_string);
@@ -130,23 +149,27 @@ function morphbank_harvest_form_submit($form, &$form_state) {
     $num_unchanged = 0;
     $num_deleted = 0;
     $num_no_images = 0;
+    $num_queries = 0;
 
     // Before cycling over taxonomy, add a record to morphbank_queries table
-    $query = "?" . "searchunid=" . $search_unidentifieds . "&maximages=" . $maximages . "&removeold=" . $remove_old_files;
+    $sid = $search_unidentifieds ? 1 : 0;
+    $rem = $remove_old_files ? 1 : 0;
+    $query = "?" . "searchunid=" . $sid . "&maximages=" . $maximages . "&removeold=" . $rem;
     $timestamp = time();
 
-    $qid = db_insert('morphbank_queries')
+    $qid = db_insert('morphbank_queries') //TODO: rename table to morphbank_harvests, because each harvest has hundreds of queries
       ->fields(array(
         'query' => $query,
         'execution_date' => $timestamp,
+        'problem' => 1,
       ))->execute();
 
     if ($qid > 0) {
 
       foreach ($taxonomy as $term) {
-        $terms[$term->tid] = $term->name;
+        //$terms[$term->tid] = $term->name;
         $term_name = $term->name;
-        // We now have an array of term names.
+        // We now have term name.
         // 1. Perform morphbank query  _query_morphbank
         // 2. Process response         _process_query (return array of image Morphbank IDs?)
         //      If no images, move to next term;
@@ -176,16 +199,40 @@ function morphbank_harvest_form_submit($form, &$form_state) {
           }
         }
 
+        if ($restrict_ranks) {
+          $skip = TRUE;
+          $term_entity = taxonomy_term_load($term->tid);
+          if ($term_entity) {
+            $term_rank = (isset($term_entity->field_rank[LANGUAGE_NONE][0]['value']) ? strtolower($term_entity->field_rank[LANGUAGE_NONE][0]['value']) : null);
+            //$term_rank = $term->field_rank[LANGUAGE_NONE][0]['value'];
+            if ($term_rank) {
+              if (in_array($term_rank, $ranks_to_harvest)) {
+                $skip = FALSE;
+              }
+            }
+          }
+        }
+
+// For testing purposes, lets restrict this to those beasts in Liocosmius (festivum, horni, mundum)
+$skip = TRUE;
+if (strpos($term_name, 'festivum') > 0 || strpos($term_name, 'horni') > 0 || strpos($term_name, 'mundum')) {
+  $skip = FALSE;
+}
+
+
         if (!$skip){
           // Make sure Morphbank is responsive
           if (file_get_contents(MORPHBANK_SERVICE)) {
             $responses = _query_morphbank($term_name, $maximages);
 
             if (is_array($responses)) { // The numReturned element was not empty (see _query_morphbank)
-
+              $num_queries++;
               if (count($responses) == 0) { // No images were returned from query
                 $num_no_images++;
               } else { // An array of SimpleXLMObjects returned
+$num_images = count($responses);
+drupal_set_message(t('***   @num_images images for term @term_name', array('@num_images' => $num_images, '@term_name' => $term_name)));
+/*
                 foreach ($responses as $morphbank_response) {
                   $result = _process_response($morphbank_response, $term_name, $qid);
                   switch ($result) {
@@ -200,8 +247,8 @@ function morphbank_harvest_form_submit($form, &$form_state) {
                       break;
                   }
                 }
+*/
               }
-
             } else { // The numReturned element wasn't found in the response
               $problem = TRUE;
             }
@@ -213,20 +260,20 @@ function morphbank_harvest_form_submit($form, &$form_state) {
 
       if ($problem) {
         drupal_set_message(t("There was a problem connecting to Morphbank's server; some images may not have been harvested."));
-        // And update the record in morphbank_queries to reflect there was a problem
+      } else {
+        // And update the record in morphbank_queries to reflect there were no problems
         $num_updated = db_update('morphbank_queries')
           ->fields(array(
-            'problem' => 1,
+            'problem' => 0,
           ))
           ->condition('qid', $qid, "=")
           ->execute();
-      } else {
         //TODO: Need cleanup first by removing links to specimens?
 
         // If no problems, remove old files, if appropriate
         if ($remove_old_files) {
           $files_to_remove = db_select('morphbank_images', 'm')
-            ->fields('m', 'fid')
+            ->fields('m', array('fid'))
             ->condition('qid', $qid, '<>')
             ->execute();
           $fids_remove = array();
@@ -247,11 +294,16 @@ function morphbank_harvest_form_submit($form, &$form_state) {
       drupal_set_message(t('@changed images updated', array('@changed' => $num_changed)));
       drupal_set_message(t('@unchanged images unchanged', array('@unchanged' => $num_unchanged)));
       drupal_set_message(t('@deleted images deleted', array('@deleted' => $num_deleted)));
+      drupal_set_message(t('@queries queries successfully performed', array('@queries' => $num_queries)));
       drupal_set_message(t('@no_images terms had no corresponding images on Morphbank', array('@no_images' => $num_no_images)));
     } // failed to insert morphbank_queries record
   } else {
     drupal_set_message(t('Empty vocabulary selected (vid = @vid)', array('@vid' => $vid)));
   }
+$time_end = time();
+$total_seconds = $time_end - $time_start;
+drupal_set_message(t('Total time: @time seconds', array('@time' => $total_seconds)));
+
 }
 
 /**
@@ -273,6 +325,7 @@ function _query_morphbank($term_name, $maximages) {
   $search_terms = array(
       'method' => 'taxon',
       'objecttype' => 'Image',
+//      'format' => 'id', //TODO: switch when Morphbank's XML service is back online
       'format' => 'svc',
       'taxonName' => $term_name,
       'limit' => $maximages,
@@ -290,30 +343,42 @@ function _query_morphbank($term_name, $maximages) {
   // Build the url
   $request_url = MORPHBANK_SERVICE . 'request?' . $query_string;
 
+//drupal_set_message(t('Query: @query', array('@query' => $request_url)));
+/**/
   // Make the request
   $result = drupal_http_request($request_url);
 
-  if ($result->error) {
-    //TODO: deal with error codes here
-  }
+  //Make sure code == 200
+  $code = $result->code;
+  if ($code == 200) {
+    // Convert the 'data' object returned from drupal_http_request from string to an XML object
+    // Suppressing warning in case Morphbank is returning malformed XML
+    if ($response_xml = simplexml_load_string($result->data, "SimpleXMLElement", $options = LIBXML_NOERROR)) {
 
+  //TODO: switch when Morphbank's XML service is back online
+//    if (is_null($response_xml->numResultsReturned)) {
+      if (is_null($response_xml->numReturned)) { // No numReturned element, something probably went wrong
+        return FALSE;
+      }
 
-  // Convert the 'data' object returned from drupal_http_request from string to an XML object
-  $response_xml = simplexml_load_string($result->data);
+      $response_array = array();
+/*
+    //TODO: switch when Morphbank's XML service is back online
+      foreach ($response_xml->id as $id) {
+        $response_array[] = $id;
+      }
+/**/
+      foreach ($response_xml->object as $object) {
+        $obj_attributes = $object->attributes();
+        if ($obj_attributes['type'] == "Image") {
+          $response_array[] = $object;
+        }
+      }
 
-  if (is_null($response_xml->numReturned)) { // No numReturned element, something probably went wrong
-    return FALSE;
-  }
-
-  $response_array = array();
-  foreach ($response_xml->object as $object) {
-    $obj_attributes = $object->attributes();
-    if ($obj_attributes['type'] == "Image") {
-      $response_array[] = $object;
+      return $response_array;
     }
   }
-
-  return $response_array;
+  return FALSE;
 
   /*
   if (!is_null($response_xml->numReturned)) {

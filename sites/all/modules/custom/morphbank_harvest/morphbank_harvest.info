@@ -1,8 +1,8 @@
 name = "Morphbank Harvest"
-description = "Harvests Morphbank images."
+description = "Harvests Morphbank images based on a vocabulary."
 package = Morphbank
 core = 7.x
-version = 0.1
+version = 0.2
 dependencies[] = entity
 dependencies[] = field
 files[] = morphbank_harvest.module

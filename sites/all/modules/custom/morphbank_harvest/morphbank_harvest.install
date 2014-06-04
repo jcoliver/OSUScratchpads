@@ -16,6 +16,10 @@
  * Implements hook_enable().
  */
 function morphbank_harvest_enable() {
+  $field = field_info_field('field_morphbank_specimen_id');
+  if($field){
+    field_delete_field('field_morphbank_specimen_id');
+  }
   // Create morphbank specimen ID field
   $field = array(
     'active' => '1',
@@ -25,7 +29,7 @@ function morphbank_harvest_enable() {
     'field_name' => 'field_morphbank_specimen_id',
 //    'type' => 'text',
     'unsigned' => TRUE,
-    'type' => 'int',
+    'type' => 'number_integer',
     'size' => 'normal',
     'description' => t('The unique identifier for this specimen in the Morphbank system.'),
   );
@@ -36,7 +40,7 @@ function morphbank_harvest_enable() {
     'bundle' => 'specimen_observation',
     'entity_type' => 'node',
     'field_name' => 'field_morphbank_specimen_id',
-    'type' => 'text',
+    'type' => 'number_integer',
     'label' => t('Morphbank Specimen ID'),
     'required' => 0,
 //    'widget' => array(
@@ -83,19 +87,23 @@ function morphbank_harvest_disable() {
     $fids[] = $row->fid;
   }
 
-  // Now delete records from field_data_field_media table
-  db_delete('field_data_field_media')->condition('field_media_fid', $fids, 'IN')->execute();
+  // If there are any files listed in morphbank_images table, delete links and files
+  if (count($fids) > 0) {
+    // Delete records from field_data_field_media table
+    db_delete('field_data_field_media')->condition('field_media_fid', $fids, 'IN')->execute();
 
-  // Next delete records from file_usage table
-  //TODO:  These are managed files, is this step necessary?
-  db_delete('file_usage')->condition('fid', $fids, 'IN')->execute();
+    // Next delete records from file_usage table
+    //TODO:  These are managed files, is this step necessary?
+    db_delete('file_usage')->condition('fid', $fids, 'IN')->execute();
 
-  // Remove the files themselves
-  $files = file_load_multiple($fids);
-  foreach ($files as $file) {
-    file_delete($file);
+    // Remove the files themselves
+    $files = file_load_multiple($fids);
+    foreach ($files as $file) {
+      file_delete($file);
+    }
   }
 }
+
 
 /**
  * Implements hook_schema().
@@ -125,12 +133,14 @@ function morphbank_harvest_schema() {
       'execution_date' => array(
         'description' => 'The date, as Unix timestamp, this query was executed',
         'type' => 'int',
+        'unsigned' => TRUE,
         'not null' => TRUE,
         'default' => 0,
       ),
       'problem' => array(
         'description' => 'Boolean to indicate if problems were encountered during the query',
-        'type' => 'tinyint',
+        'type' => 'int',
+        'size' => 'tiny',
         'not null' => TRUE,
         'default' => 0,
       )
@@ -173,12 +183,14 @@ function morphbank_harvest_schema() {
         'description' => 'The morphbank ID of the image',
         'type' => 'int',
         'size' => 'normal',
+        'unsigned' => TRUE,
         'not null' => TRUE,
         'default' => 0,
       ),
       'last_modified' => array(
         'description' => 'The date, as Unix timestamp, the Morphbank image record was last modified',
         'type' => 'int',
+        'unsigned' => TRUE,
         'not null' => TRUE,
         'default' => 0,
       ),
@@ -186,11 +198,13 @@ function morphbank_harvest_schema() {
         'description' => 'The morphbank ID for the specimen in the image',
         'type' => 'int',
         'size' => 'normal',
+        'unsigned' => TRUE,
       ),
       'fid' => array(
         'description' => 'The ID of the image in the file_managed table',
         'type' => 'int',
         'size' => 'normal',
+        'unsigned' => TRUE,
         'not null' => TRUE,
         'default' => 0,
       ),
