@@ -224,7 +224,7 @@ if (strpos($term_name, 'festivum') > 0 || strpos($term_name, 'horni') > 0 || str
           // Make sure Morphbank is responsive
           if (file_get_contents(MORPHBANK_SERVICE)) {
             $responses = _query_morphbank($term_name, $maximages);
-
+//TODO: This is how far testing has reached
             if (is_array($responses)) { // The numReturned element was not empty (see _query_morphbank)
               $num_queries++;
               if (count($responses) == 0) { // No images were returned from query
