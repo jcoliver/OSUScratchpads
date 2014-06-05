@@ -4,7 +4,7 @@
  *
  * In enable/install, sets up
  *   one field, field_morphank_specimen_id
- *   two tables, morphbank_queries and morphbank_images, for record keeping
+ *   two tables, morphbank_harvests and morphbank_images, for record keeping
  *
  * In disable,
  *   removes field_morphbank_specimen_id
@@ -16,6 +16,7 @@
  * Implements hook_enable().
  */
 function morphbank_harvest_enable() {
+  // If field_morphbank_specimen_id field exists, deletes
   $field = field_info_field('field_morphbank_specimen_id');
   if($field){
     field_delete_field('field_morphbank_specimen_id');
@@ -76,7 +77,8 @@ function morphbank_harvest_enable() {
  * the files themselves.
  */
 function morphbank_harvest_disable() {
-  field_delete_field('morphbank_specimen_id');
+  // Marks field for deletion
+  field_delete_field('field_morphbank_specimen_id');
 
   // Find all files that were obtained from the morphbank harvest
   $morphbank_files = db_select('morphbank_images', 'm')->fields('m', array('fid'))
@@ -109,23 +111,23 @@ function morphbank_harvest_disable() {
  * Implements hook_schema().
  *
  * Builds two tables used in record keeping:
- *   morphbank_query, which keeps track of queries to morphbank
+ *   morphbank_harvests, which keeps track of queries to morphbank
  *   morphbank_images, which keeps track of the results (images) from those queries
  */
 function morphbank_harvest_schema() {
   $schema = array();
   /**/
   // Table to hold queries
-  $schema['morphbank_queries'] = array(
+  $schema['morphbank_harvests'] = array(
     'fields' => array(
-      'qid' => array(
+      'hid' => array(
         'description' => 'Primary key',
         'type' => 'serial',
         'unsigned' => TRUE,
         'not null' => TRUE,
       ),
       'query' => array(
-        'description' => 'The query details in a query string format',
+        'description' => 'The harvest details in a query string format',
         'type' => 'text',
         'size' => 'normal',
         'not null' => TRUE,
@@ -159,7 +161,7 @@ function morphbank_harvest_schema() {
     ),
     //TODO: Consider adding indexes?
     'primary key' => array(
-      'qid'
+      'hid'
     ),
   );
   /**/
@@ -172,8 +174,8 @@ function morphbank_harvest_schema() {
         'unsigned' => TRUE,
         'not null' => TRUE,
       ),
-      'qid' => array(
-        'description' => 'The ID of the morphbank_query record that produced this image',
+      'hid' => array(
+        'description' => 'The ID of the morphbank_harvests record that produced this image',
         'type' => 'int',
         'unsigned' => TRUE,
         'not null' => TRUE,

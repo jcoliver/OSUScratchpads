@@ -151,20 +151,20 @@ $time_start = time();
     $num_no_images = 0;
     $num_queries = 0;
 
-    // Before cycling over taxonomy, add a record to morphbank_queries table
+    // Before cycling over taxonomy, add a record to morphbank_harvests table
     $sid = $search_unidentifieds ? 1 : 0;
     $rem = $remove_old_files ? 1 : 0;
     $query = "?" . "searchunid=" . $sid . "&maximages=" . $maximages . "&removeold=" . $rem;
     $timestamp = time();
 
-    $qid = db_insert('morphbank_queries') //TODO: rename table to morphbank_harvests, because each harvest has hundreds of queries
+    $hid = db_insert('morphbank_harvests') //TODO: rename table to morphbank_harvests, because each harvest has hundreds of queries
       ->fields(array(
         'query' => $query,
         'execution_date' => $timestamp,
         'problem' => 1,
       ))->execute();
 
-    if ($qid > 0) {
+    if ($hid > 0) {
 
       foreach ($taxonomy as $term) {
         //$terms[$term->tid] = $term->name;
@@ -234,7 +234,7 @@ $num_images = count($responses);
 drupal_set_message(t('***   @num_images images for term @term_name', array('@num_images' => $num_images, '@term_name' => $term_name)));
 /*
                 foreach ($responses as $morphbank_response) {
-                  $result = _process_response($morphbank_response, $term_name, $qid);
+                  $result = _process_response($morphbank_response, $term_name, $hid);
                   switch ($result) {
                     case 'a':
                       $num_added++;
@@ -259,22 +259,22 @@ drupal_set_message(t('***   @num_images images for term @term_name', array('@num
       }
 
       if ($problem) {
-        drupal_set_message(t("There was a problem connecting to Morphbank's server; some images may not have been harvested."));
+        drupal_set_message(t("There was a problem connecting to Morphbank's server; some images may not have been harvested."), 'warning');
       } else {
-        // And update the record in morphbank_queries to reflect there were no problems
-        $num_updated = db_update('morphbank_queries')
+        // And update the record in morphbank_harvests to reflect there were no problems
+        $num_updated = db_update('morphbank_harvests')
           ->fields(array(
             'problem' => 0,
           ))
-          ->condition('qid', $qid, "=")
+          ->condition('hid', $hid, "=")
           ->execute();
-        //TODO: Need cleanup first by removing links to specimens?
 
         // If no problems, remove old files, if appropriate
+        //TODO: Need cleanup first by removing links to specimens?
         if ($remove_old_files) {
           $files_to_remove = db_select('morphbank_images', 'm')
             ->fields('m', array('fid'))
-            ->condition('qid', $qid, '<>')
+            ->condition('hid', $hid, '<>')
             ->execute();
           $fids_remove = array();
           foreach ($files_to_remove as $to_remove) {
@@ -296,7 +296,7 @@ drupal_set_message(t('***   @num_images images for term @term_name', array('@num
       drupal_set_message(t('@deleted images deleted', array('@deleted' => $num_deleted)));
       drupal_set_message(t('@queries queries successfully performed', array('@queries' => $num_queries)));
       drupal_set_message(t('@no_images terms had no corresponding images on Morphbank', array('@no_images' => $num_no_images)));
-    } // failed to insert morphbank_queries record
+    } // failed to insert morphbank_harvests record
   } else {
     drupal_set_message(t('Empty vocabulary selected (vid = @vid)', array('@vid' => $vid)));
   }
@@ -350,7 +350,7 @@ function _query_morphbank($term_name, $maximages) {
 
   //Make sure code == 200
   $code = $result->code;
-  if ($code == 200) {
+  if ($code == 200) { //TODO: not 201, too?
     // Convert the 'data' object returned from drupal_http_request from string to an XML object
     // Suppressing warning in case Morphbank is returning malformed XML
     if ($response_xml = simplexml_load_string($result->data, "SimpleXMLElement", $options = LIBXML_NOERROR)) {
@@ -377,7 +377,7 @@ function _query_morphbank($term_name, $maximages) {
 
       return $response_array;
     }
-  }
+  } // End conditional for success response code
   return FALSE;
 
   /*
@@ -433,13 +433,13 @@ function _query_morphbank($term_name, $maximages) {
  *   database (but are now); returns 'c' for images that were in database, but had
  *   changed since last harvest (and are now updated); and returns 'u' for images that
  *   were in the database and returned in query, but had not changed since the last
- *   harvest (and were thus not updated, although the qid is updated).  If record was
+ *   harvest (and were thus not updated, although the hid is updated).  If record was
  *   not successfully processed, returns FALSE.
  *
  * @see _update_specimen_links
  * @see _remove_outdated_links
  */
-function _process_response($response, $term_name, $qid) {
+function _process_response($response, $term_name, $hid) {
   $to_return = FALSE;
   // Want to retrieve the image id
   $source_id_element = $response->sourceId;
@@ -483,7 +483,7 @@ function _process_response($response, $term_name, $qid) {
               'last_modified' => $last_changed_on_morphbank,
               'morphbank_specimen_id' => $morphbank_specimen_id,
               'fid' => $fid,
-              'qid' => $qid,
+              'hid' => $hid,
               'original_filename' => "{$original_filename}",
             ))
             ->condition('mid', $mid, '=')
@@ -501,7 +501,7 @@ function _process_response($response, $term_name, $qid) {
             'last_modified' => $last_changed_on_morphbank,
             'morphbank_specimen_id' => $morphbank_specimen_id,
             'fid' => $fid,
-            'qid' => $qid,
+            'hid' => $hid,
             'original_filename' => "{$original_filename}",
           ))
           ->execute();
@@ -509,12 +509,12 @@ function _process_response($response, $term_name, $qid) {
           $to_return = 'a';
         }
       }
-    } else { // We did not retrieve the file (dates of last change match), but it was returned in the query, so update qid in morphbank_images
-      // If record is not updated with qid, it will be deleted if user selects remove old files
+    } else { // We did not retrieve the file (dates of last change match), but it was returned in the query, so update hid in morphbank_images
+      // If record is not updated with hid, it will be deleted if user selects remove old files
       if ($mid > 0) {
         $num_updated = db_update('morphbank_images')
           ->fields(array(
-            'qid' => $qid,
+            'hid' => $hid,
           ))->condition('mid', $mid, '=')
           ->execute();
         if ($num_updated > 0) {
