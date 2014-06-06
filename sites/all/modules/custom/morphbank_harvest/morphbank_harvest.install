@@ -28,7 +28,6 @@ function morphbank_harvest_enable() {
     'deleted' => '0',
     'entity_types' => array(),
     'field_name' => 'field_morphbank_specimen_id',
-//    'type' => 'text',
     'unsigned' => TRUE,
     'type' => 'number_integer',
     'size' => 'normal',
@@ -44,24 +43,9 @@ function morphbank_harvest_enable() {
     'type' => 'number_integer',
     'label' => t('Morphbank Specimen ID'),
     'required' => 0,
-//    'widget' => array(
-//      'type' => 'text_textfield',
-//    ),
     'default_value' => NULL,
     'deleted' => '0',
     'description' => t('The unique identifier for this specimen in the Morphbank system.'),
-//    'display' => array(
-//      'default' => array(
-//        'label' => 'above',
-//        'type' => 'text',
-//      ),
-//      'teaser' => array(
-//        'label' => 'above',
-//        'settings' => array(),
-//        'type' => 'hidden',
-//        'weight' => 0
-//      ),
- //   ),
   );
   field_create_instance($instance);
 
