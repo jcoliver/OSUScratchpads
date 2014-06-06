@@ -130,18 +130,6 @@ function morphbank_harvest_schema() {
         'not null' => TRUE,
         'default' => 0,
       )
-/*      'date_created' => array(
-        'description' => 'The date, as Unix timestamp, this query was created',
-        'type' => 'int',
-        'not null' => TRUE,
-        'default' => 0,
-      ),
-      'latest_execution' => array(
-        'description' => 'The date, as Unix timestamp, this query was last executed',
-        'type' => 'int',
-        'not null' => TRUE,
-        'default' => 0,
-      ),*/
     ),
     //TODO: Consider adding indexes?
     'primary key' => array(
