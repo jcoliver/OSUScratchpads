@@ -9,7 +9,8 @@
 /**
  * The URL for the morphbank service; append 'request' for queries
  */
-define("MORPHBANK_SERVICE", "http://services.morphbank.net/mb3/");
+//define("MORPHBANK_SERVICE", "http://services.morphbank.net/mb3/");
+define("MORPHBANK_SERVICE", "http://services.dev.morphbank.net/mbsvc3/");
 
 /**
  * The URL for morphbank records
@@ -80,6 +81,7 @@ function morphbank_harvest_form() {
     '#default_value' => 1,
   );
 
+  // Whether to restrict search to ranks of species and below
   $form['restrictranks'] = array(
     '#type' => 'checkbox',
     '#title' => t("Restrict harvest to terms of rank species and below"),
@@ -157,7 +159,7 @@ $time_start = time();
     $query = "?" . "searchunid=" . $sid . "&maximages=" . $maximages . "&removeold=" . $rem;
     $timestamp = time();
 
-    $hid = db_insert('morphbank_harvests') //TODO: rename table to morphbank_harvests, because each harvest has hundreds of queries
+    $hid = db_insert('morphbank_harvests')
       ->fields(array(
         'query' => $query,
         'execution_date' => $timestamp,
@@ -325,7 +327,7 @@ function _query_morphbank($term_name, $maximages) {
   $search_terms = array(
       'method' => 'taxon',
       'objecttype' => 'Image',
-//      'format' => 'id', //TODO: switch when Morphbank's XML service is back online
+//      'format' => 'id', //TODO: use if Morphbank's XML service is offline
       'format' => 'svc',
       'taxonName' => $term_name,
       'limit' => $maximages,
@@ -355,7 +357,7 @@ function _query_morphbank($term_name, $maximages) {
     // Suppressing warning in case Morphbank is returning malformed XML
     if ($response_xml = simplexml_load_string($result->data, "SimpleXMLElement", $options = LIBXML_NOERROR)) {
 
-  //TODO: switch when Morphbank's XML service is back online
+  //TODO: use if Morphbank's XML service is offline
 //    if (is_null($response_xml->numResultsReturned)) {
       if (is_null($response_xml->numReturned)) { // No numReturned element, something probably went wrong
         return FALSE;
@@ -363,7 +365,7 @@ function _query_morphbank($term_name, $maximages) {
 
       $response_array = array();
 /*
-    //TODO: switch when Morphbank's XML service is back online
+    //TODO: use if Morphbank's XML service is offline
       foreach ($response_xml->id as $id) {
         $response_array[] = $id;
       }
