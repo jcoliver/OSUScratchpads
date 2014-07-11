@@ -144,7 +144,7 @@ $time_start = time();
   // get the corresponding taxonomy
   $taxonomy = taxonomy_get_tree($vid);
   if (!is_null($taxonomy) && count($taxonomy) > 0) {
-    $terms = array();
+    $terms = array(); // TODO: Is this used?
     $problem = FALSE;
     $num_added = 0;
     $num_changed = 0;
@@ -234,6 +234,7 @@ if (strpos($term_name, 'festivum') > 0 || strpos($term_name, 'horni') > 0 || str
               } else { // An array of SimpleXLMObjects returned
 $num_images = count($responses);
 drupal_set_message(t('***   @num_images images for term @term_name', array('@num_images' => $num_images, '@term_name' => $term_name)));
+/*
                 foreach ($responses as $morphbank_response) {
                   $result = _process_response($morphbank_response, $term_name, $tid, $hid);
                   $found_result = FALSE;
@@ -261,6 +262,7 @@ drupal_set_message(t('***   Result returned FALSE for term @term_name', array('@
                     }
                   }
                 }
+*/
               }
             } else { // The numReturned element wasn't found in the response
               $problem = TRUE;
@@ -739,8 +741,52 @@ function _update_file_links($fid, $tid, $morphbank_view_id) {
       }
 
       // Second part: see if there is a term in Image Preparation Technique with this Morphbank View ID
-//      $image_prep_taxonomy = taxonomy_
+/*
+      $vocabularies = taxonomy_get_vocabularies();
+      foreach ($vocabularies as $vocabulary) {
+        if ($vocabulary->machine_name == 'imaging_technique') {
+          $imaging_vid = $vocabulary->vid;
+          break;
+        }
+      }
+      if ($imaging_vid > 0) {
+        $imaging_terms = taxonomy_get_tree($imaging_vid);
+        if (!is_null($imaging_terms) && count($imaging_terms) > 0) {
+          foreach ($imaging_terms as $imaging_term) {
+            if ($morphbank_view_id == $imaging_term->field_morphbank_view_id) {
+              $imaging_tid = $imaging_term->tid;
+            }
+          }
+        }
+        if ($imaging_tid > 0) {
+          // Uncomment if multiple values are allowed in field (and see below)
+          //$current_list = $entity_wrapper->field_imaging_technique->value();
 
+          if (!$current_list) {
+            $current_list = array();
+          }
+          $make_link = TRUE;
+          // If multiple values in this term reference are to be allowed, uncomment the section to avoid overwriting
+          // any values that are already in the field:
+          //Make sure this term is not already attached to this image file (via tid)
+          //foreach ($current_list as $list_item) {
+          //  if ($imaging_tid == $list_item['tid']){ // refers to field_data_field_taxonomic_name.field_taxonomic_name_tid in database
+          //    $make_link = FALSE;
+          //    break;
+          //  }
+          //}
+          if ($make_link) {
+            $imaging_term_as_array = (array)$imaging_tid; // Cast as an array before attaching
+            $current_list[] = $imaging_term_as_array;
+
+            $entity_wrapper->field_imaging_technique->set($current_list);
+            $entity_wrapper->save();
+          }
+        } else {
+//drupal_set_message(t('No Imaging Preparation term had morphbank id = @morphbank', array('@morphbank' => $morphbank_view_id)));
+        }
+      }
+      */
     }
   }
 }

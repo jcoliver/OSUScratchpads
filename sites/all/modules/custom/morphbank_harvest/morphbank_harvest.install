@@ -45,7 +45,7 @@ function morphbank_harvest_enable() {
     'entity_type' => 'node',
     'field_name' => 'field_morphbank_specimen_id',
     'type' => 'number_integer',
-    'label' => t('Morphbank Specimen ID'),
+    'label' => t('Morphbank specimen ID'),
     'required' => 0,
     'default_value' => NULL,
     'deleted' => '0',
@@ -53,7 +53,33 @@ function morphbank_harvest_enable() {
   );
   field_create_instance($instance);
 
-  // TODO: need to add morphbank_view_id field to the Imaging technique vocabulary
+  // Create morphbank view ID field
+  $view_field = array(
+      'active' => '1',
+      'cardinality' => '1',
+      'deleted' => '0',
+      'entity_types' => array(),
+      'field_name' => 'field_morphbank_view_id',
+      'unsigned' => TRUE,
+      'type' => 'number_integer',
+      'size' => 'normal',
+      'description' => t('The unique identifier for this image view in the Morphbank system.'),
+  );
+  $view_field = field_create_field($view_field);
+
+  // And add an instance of this view field to the imaging preparation technique vocabulary
+  $view_instance = array(
+      'bundle' => 'imaging_technique',
+      'entity_type' => 'taxonomy_term',
+      'field_name' => 'field_morphbank_view_id',
+      'type' => 'number_integer',
+      'label' => t('Morphbank view ID'),
+      'required' => 0,
+      'default_value' => NULL,
+      'deleted' => '0',
+      'description' => t('The unique identifier for this image view in the Morphbank system.'),
+  );
+  field_create_instance($view_instance);
 
   // Make the directory where images will be stored
   @drupal_mkdir('public://morphbank');
