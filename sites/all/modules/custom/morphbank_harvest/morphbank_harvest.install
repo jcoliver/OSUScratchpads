@@ -14,6 +14,10 @@
 
 /**
  * Implements hook_enable().
+ *
+ * Adds field (and instance) to specimen observation for morphbank specimen IDs
+ *
+ * Adds field (and instance) to Image preparation techniques vocabulary for morphbank view IDs
  */
 function morphbank_harvest_enable() {
   // If field_morphbank_specimen_id field exists, deletes
@@ -48,6 +52,8 @@ function morphbank_harvest_enable() {
     'description' => t('The unique identifier for this specimen in the Morphbank system.'),
   );
   field_create_instance($instance);
+
+  // TODO: need to add morphbank_view_id field to the Imaging technique vocabulary
 
   // Make the directory where images will be stored
   @drupal_mkdir('public://morphbank');
@@ -161,6 +167,7 @@ function morphbank_harvest_schema() {
         'not null' => TRUE,
         'default' => 0,
       ),
+        //TODO: consider adding the morphbank view id here?
       'last_modified' => array(
         'description' => 'The date, as Unix timestamp, the Morphbank image record was last modified',
         'type' => 'int',

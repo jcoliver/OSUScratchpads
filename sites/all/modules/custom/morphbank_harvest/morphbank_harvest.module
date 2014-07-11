@@ -171,6 +171,7 @@ $time_start = time();
       foreach ($taxonomy as $term) {
         //$terms[$term->tid] = $term->name;
         $term_name = $term->name;
+        $tid = $term->tid;
         // We now have term name.
         // 1. Perform morphbank query  _query_morphbank
         // 2. Process response         _process_query (return array of image Morphbank IDs?)
@@ -226,7 +227,6 @@ if (strpos($term_name, 'festivum') > 0 || strpos($term_name, 'horni') > 0 || str
           // Make sure Morphbank is responsive
           if (file_get_contents(MORPHBANK_SERVICE)) {
             $responses = _query_morphbank($term_name, $maximages);
-//TODO: This is how far testing has reached
             if (is_array($responses)) { // The numReturned element was not empty (see _query_morphbank)
               $num_queries++;
               if (count($responses) == 0) { // No images were returned from query
@@ -234,22 +234,36 @@ if (strpos($term_name, 'festivum') > 0 || strpos($term_name, 'horni') > 0 || str
               } else { // An array of SimpleXLMObjects returned
 $num_images = count($responses);
 drupal_set_message(t('***   @num_images images for term @term_name', array('@num_images' => $num_images, '@term_name' => $term_name)));
-/*
+//TODO: This is how far testing has reached
+/**/
                 foreach ($responses as $morphbank_response) {
-                  $result = _process_response($morphbank_response, $term_name, $hid);
+                  $result = _process_response($morphbank_response, $term_name, $tid, $hid);
+                  $found_result = FALSE;
                   switch ($result) {
                     case 'a':
                       $num_added++;
+                      $found_result = TRUE;
                       break;
                     case 'c':
                       $num_changed++;
+                      $found_result = TRUE;
                       break;
                     case 'u':
                       $num_unchanged++;
+                      $found_result = TRUE;
                       break;
                   }
+                  if (!$found_result) { // TODO: For debugging purposes
+                    if (!is_null($result)) {
+                      if ($result){
+drupal_set_message(t('***   Error code: @error returned for term @term_name', array('@error' => $result, '@term_name' => $term_name)));
+                      } else {
+drupal_set_message(t('***   Result returned FALSE for term @term_name', array('@term_name' => $term_name)));
+                      }
+                    }
+                  }
                 }
-*/
+/**/
               }
             } else { // The numReturned element wasn't found in the response
               $problem = TRUE;
@@ -407,7 +421,7 @@ function _query_morphbank($term_name, $maximages) {
  * Processes a XML object corresponding to a Morphbank image record.
  *
  * Extracts relevant element values from $response.  If this record (as identified
- *   by the Morphbank ID) is new (no record in morphbank_images table), it adds
+ * by the Morphbank ID) is new (no record in morphbank_images table), it adds
  *   a record to the table; if the record is *not* new, checks the date of last
  *   modification (in the XML as dateLastModified element).  If the record has
  *   been updated on Morphbank since the last harvest (as recorded in
@@ -441,7 +455,7 @@ function _query_morphbank($term_name, $maximages) {
  * @see _update_specimen_links
  * @see _remove_outdated_links
  */
-function _process_response($response, $term_name, $hid) {
+function _process_response($response, $term_name, $tid, $hid) {
   $to_return = FALSE;
   // Want to retrieve the image id
   $source_id_element = $response->sourceId;
@@ -451,8 +465,12 @@ function _process_response($response, $term_name, $hid) {
   $last_changed_on_morphbank = date(strtotime($response->dateLastModified));
 
   // See if we have a record for this image ID already
-  $query_result = db_select('morphbank_images', 'm')->fields('m', array('mid', 'last_modified', 'fid'))->condition('morphbank_image_id', $morphbank_image_id);
-  $on_disk = count($query_result) > 0;
+  $query_result = db_select('morphbank_images', 'm')
+    ->fields('m', array('mid', 'last_modified', 'fid'))
+    ->condition('morphbank_image_id', $morphbank_image_id)
+    ->execute();
+
+  $on_disk = $query_result->rowCount(); // do not use count($query_result)
   $get_file = TRUE;
   if ($on_disk) {
     foreach ($query_result as $one_result) {
@@ -475,6 +493,8 @@ function _process_response($response, $term_name, $hid) {
     $morphbank_specimen = $response->specimen;
     $morphbank_specimen_id = (int) $morphbank_specimen->morphbank;
 
+    // TODO: Grab the view identifier here and try to find it in Imaging technique vocabulary
+/**/
     // Perform update/insert on morphbank_images table as appropriate
     if ($get_file) { // Did we add/update the file?
       if ($on_disk) { // Updated (changed)
@@ -493,7 +513,11 @@ function _process_response($response, $term_name, $hid) {
 
           if ($num_updated > 0) {
             $to_return = 'c';
+          } else {
+            $to_return = 'err.5';
           }
+        } else {
+          $to_return = "err.4";
         }
       } else { // Added (image was not already on disk)
         // Insert a new record into morphbank_images
@@ -509,8 +533,13 @@ function _process_response($response, $term_name, $hid) {
           ->execute();
         if ($mid > 0) {
           $to_return = 'a';
+        } else {
+          $to_return = 'err.3';
         }
       }
+      // Check to see that add/update was successful, then create link of
+
+
     } else { // We did not retrieve the file (dates of last change match), but it was returned in the query, so update hid in morphbank_images
       // If record is not updated with hid, it will be deleted if user selects remove old files
       if ($mid > 0) {
@@ -521,18 +550,26 @@ function _process_response($response, $term_name, $hid) {
           ->execute();
         if ($num_updated > 0) {
           $to_return = 'u';
+        } else {
+          $to_return = 'err.2';
         }
+      } else {
+        $to_return = 'err.1';
       }
     }
-
 
     // Either (1) file has been written or (2) the image did not need to be downloaded again, either way, we have the fid
     // Now need to check for adding links to Specimen/Observation nodes
     _update_specimen_links($fid, $morphbank_specimen_id);
 
+    // Also want to link the file to the term we just searched on
+    _update_taxonomic_name_links($fid, $tid);
+/*
+    // TODO: method is buggy
     // Finally, check to see if any links to Specimen/Observation nodes need to be removed (say, for example, if the
     //   Morphbank specimen ID changed)
     _remove_outdated_links($fid, $morphbank_specimen_id);
+*/
   }
 
   return $to_return;
@@ -586,6 +623,9 @@ function _retrieve_morphbank_image($morphbank_image_id, $term_name, $original_fi
       // This save sets status == 1
       $file = file_save_data($image, $destination, FILE_EXISTS_REPLACE); // Replaces file if already exists
 
+      //TODO: have a means of pulling out the morphbank view id and storing that in the image, too?
+      //TODO: add link to taxonomy term, too
+
       if (is_object($file)) {
         $fid = $file->fid;
         return $fid;
@@ -609,7 +649,7 @@ function _retrieve_morphbank_image($morphbank_image_id, $term_name, $original_fi
 function _update_specimen_links($fid, $morphbank_specimen_id) {
   if ($fid > 0 && $morphbank_specimen_id > 0) {
     $node_query = new EntityFieldQuery();
-    $node_query->endityCondition('entity_type', 'node')
+    $node_query->entityCondition('entity_type', 'node')
       ->entityCondition('bundle', 'specimen_observation')
       ->fieldCondition('field_morphbank_specimen_id', 'value', $morphbank_specimen_id, '=');
     $node_result = $node_query->execute();
@@ -655,6 +695,43 @@ function _update_specimen_links($fid, $morphbank_specimen_id) {
   }
 }
 
+/**
+ * Updates file entity's taxononomic_name field
+ *
+ * @param int $fid
+ *   The file ID of the file we just added
+ *
+ * @param int $tid
+ *   The term ID of the term we just searched on (and recovered this file from search)
+ */
+function _update_taxonomic_name_links($fid, $tid) {
+  if ($fid > 0 && $tid > 0) {
+    $entity_wrapper = entity_metadata_wrapper('file', $fid);
+    if ($entity_wrapper) {
+      $current_list = $entity_wrapper->field_taxonomic_name->value();
+
+      if (!$current_list) {
+        $current_list = array();
+      }
+
+      //Make sure this term is not already attached to this image file (via tid)
+      $make_link = TRUE;
+      foreach ($current_list as $list_item) {
+        if ($tid == $list_item['tid']){ // refers to field_data_field_taxonomic_name.field_taxonomic_name_tid in database
+          $make_link = FALSE;
+          break;
+        }
+      }
+      if ($make_link) {
+        $term_as_array = (array)$tid; // Cast as an array before attaching?
+        $current_list[] = $term_as_array;
+
+        $entity_wrapper->field_taxonomic_name->set($current_list);
+        $entity_wrapper->save();
+      }
+    }
+  }
+}
 /**
  * Removes any obsolete links between Specimen/Observation nodes and images
  * harvested from Morphbank.
