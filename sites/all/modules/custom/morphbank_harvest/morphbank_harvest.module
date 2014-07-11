@@ -234,8 +234,6 @@ if (strpos($term_name, 'festivum') > 0 || strpos($term_name, 'horni') > 0 || str
               } else { // An array of SimpleXLMObjects returned
 $num_images = count($responses);
 drupal_set_message(t('***   @num_images images for term @term_name', array('@num_images' => $num_images, '@term_name' => $term_name)));
-//TODO: This is how far testing has reached
-/**/
                 foreach ($responses as $morphbank_response) {
                   $result = _process_response($morphbank_response, $term_name, $tid, $hid);
                   $found_result = FALSE;
@@ -263,7 +261,6 @@ drupal_set_message(t('***   Result returned FALSE for term @term_name', array('@
                     }
                   }
                 }
-/**/
               }
             } else { // The numReturned element wasn't found in the response
               $problem = TRUE;
@@ -434,6 +431,10 @@ function _query_morphbank($term_name, $maximages) {
  * Calls _update_specimen_links to update links between image files and Specimen/
  *   Observation nodes.
  *
+ * Calls _update_file_links to update links between image files and
+ *   (1) the term the search is performed on and (2) the image preparation technique
+ *   term corresponding to the Morphbank view.
+ *
  * Calls _remove_outdated_links to remove any links that are no longer appropriate (e.g.
  *   if the Morphbank specimen ID has changed).
  *
@@ -453,6 +454,7 @@ function _query_morphbank($term_name, $maximages) {
  *   not successfully processed, returns FALSE.
  *
  * @see _update_specimen_links
+ * @see _update_file_links
  * @see _remove_outdated_links
  */
 function _process_response($response, $term_name, $tid, $hid) {
@@ -460,6 +462,10 @@ function _process_response($response, $term_name, $tid, $hid) {
   // Want to retrieve the image id
   $source_id_element = $response->sourceId;
   $morphbank_image_id = (int) $source_id_element->morphbank;
+
+  // Want to retrieve the view id (to link file to Image Preparation Technique vocabulary later)
+  $view_element = $response->view;
+  $morphbank_view_id = (int) $view_element->morphbank;
 
   // Convert to Unix timestamp (seconds since Unix era)
   $last_changed_on_morphbank = date(strtotime($response->dateLastModified));
@@ -489,7 +495,7 @@ function _process_response($response, $term_name, $tid, $hid) {
     $fid = _retrieve_morphbank_image($morphbank_image_id, $term_name, $original_filename);
   }
 
-  if ($fid) {
+  if ($fid) { // TODO: something isn't quite right with $fid...not sure if it is being used for all it is supposed to be used for...
     $morphbank_specimen = $response->specimen;
     $morphbank_specimen_id = (int) $morphbank_specimen->morphbank;
 
@@ -563,8 +569,9 @@ function _process_response($response, $term_name, $tid, $hid) {
     _update_specimen_links($fid, $morphbank_specimen_id);
 
     // Also want to link the file to the term we just searched on
-    _update_taxonomic_name_links($fid, $tid);
+    _update_file_links($fid, $tid, $morphbank_view_id);
 /*
+    // TODO: This is how far testing has reached
     // TODO: method is buggy
     // Finally, check to see if any links to Specimen/Observation nodes need to be removed (say, for example, if the
     //   Morphbank specimen ID changed)
@@ -624,7 +631,6 @@ function _retrieve_morphbank_image($morphbank_image_id, $term_name, $original_fi
       $file = file_save_data($image, $destination, FILE_EXISTS_REPLACE); // Replaces file if already exists
 
       //TODO: have a means of pulling out the morphbank view id and storing that in the image, too?
-      //TODO: add link to taxonomy term, too
 
       if (is_object($file)) {
         $fid = $file->fid;
@@ -696,7 +702,8 @@ function _update_specimen_links($fid, $morphbank_specimen_id) {
 }
 
 /**
- * Updates file entity's taxononomic_name field
+ * Updates file entity's taxononomic_name field; creates link between the file identified
+ *   by $fid and the term identified by $tid
  *
  * @param int $fid
  *   The file ID of the file we just added
@@ -704,10 +711,11 @@ function _update_specimen_links($fid, $morphbank_specimen_id) {
  * @param int $tid
  *   The term ID of the term we just searched on (and recovered this file from search)
  */
-function _update_taxonomic_name_links($fid, $tid) {
+function _update_file_links($fid, $tid, $morphbank_view_id) {
   if ($fid > 0 && $tid > 0) {
     $entity_wrapper = entity_metadata_wrapper('file', $fid);
     if ($entity_wrapper) {
+      // First part: link to the taxonomy term we just searched on, if not already linked
       $current_list = $entity_wrapper->field_taxonomic_name->value();
 
       if (!$current_list) {
@@ -723,15 +731,20 @@ function _update_taxonomic_name_links($fid, $tid) {
         }
       }
       if ($make_link) {
-        $term_as_array = (array)$tid; // Cast as an array before attaching?
+        $term_as_array = (array)$tid; // Cast as an array before attaching
         $current_list[] = $term_as_array;
 
         $entity_wrapper->field_taxonomic_name->set($current_list);
         $entity_wrapper->save();
       }
+
+      // Second part: see if there is a term in Image Preparation Technique with this Morphbank View ID
+//      $image_prep_taxonomy = taxonomy_
+
     }
   }
 }
+
 /**
  * Removes any obsolete links between Specimen/Observation nodes and images
  * harvested from Morphbank.
