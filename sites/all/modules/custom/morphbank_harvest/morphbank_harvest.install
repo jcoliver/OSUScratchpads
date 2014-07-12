@@ -53,6 +53,11 @@ function morphbank_harvest_enable() {
   );
   field_create_instance($instance);
 
+  // If field_morphbank_specimen_id field exists, deletes
+  $field = field_info_field('field_morphbank_view_id');
+  if($field){
+    field_delete_field('field_morphbank_view_id');
+  }
   // Create morphbank view ID field
   $view_field = array(
       'active' => '1',
@@ -82,7 +87,9 @@ function morphbank_harvest_enable() {
   field_create_instance($view_instance);
 
   // Make the directory where images will be stored
+  // Make it executable?
   @drupal_mkdir('public://morphbank');
+//  @drupal_mkdir('public://morphbank', 777);
 }
 
 /**
@@ -95,6 +102,7 @@ function morphbank_harvest_enable() {
 function morphbank_harvest_disable() {
   // Marks field for deletion
   field_delete_field('field_morphbank_specimen_id');
+  field_delete_field('field_morphbank_view_id');
 
   // Find all files that were obtained from the morphbank harvest
   $morphbank_files = db_select('morphbank_images', 'm')->fields('m', array('fid'))
