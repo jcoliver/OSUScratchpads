@@ -216,9 +216,9 @@ $time_start = time();
           }
         }
 
-// For testing purposes, lets restrict this to those beasts in Liocosmius (festivum, horni, mundum)
+// For testing purposes, lets restrict this to those beasts in Liocosmius (festivum, horni, mundum) and insulatum
 $skip = TRUE;
-if (strpos($term_name, 'festivum') > 0 || strpos($term_name, 'horni') > 0 || strpos($term_name, 'mundum')) {
+if (substr_count($term_name, 'festivum') > 0 || substr_count($term_name, 'horni') > 0 || substr_count($term_name, 'mundum') > 0 || substr_count($term_name, 'insulatum') > 0) {
   $skip = FALSE;
 }
 
@@ -234,7 +234,7 @@ if (strpos($term_name, 'festivum') > 0 || strpos($term_name, 'horni') > 0 || str
               } else { // An array of SimpleXLMObjects returned
 $num_images = count($responses);
 drupal_set_message(t('***   @num_images images for term @term_name', array('@num_images' => $num_images, '@term_name' => $term_name)));
-/*
+
                 foreach ($responses as $morphbank_response) {
                   $result = _process_response($morphbank_response, $term_name, $tid, $hid);
                   $found_result = FALSE;
@@ -262,7 +262,6 @@ drupal_set_message(t('***   Result returned FALSE for term @term_name', array('@
                     }
                   }
                 }
-*/
               }
             } else { // The numReturned element wasn't found in the response
               $problem = TRUE;
@@ -287,19 +286,35 @@ drupal_set_message(t('***   Result returned FALSE for term @term_name', array('@
         // If no problems, remove old files, if appropriate
         //TODO: Need cleanup first by removing links to specimens?
         if ($remove_old_files) {
+
           $files_to_remove = db_select('morphbank_images', 'm')
             ->fields('m', array('fid'))
             ->condition('hid', $hid, '<>')
             ->execute();
-          $fids_remove = array();
-          foreach ($files_to_remove as $to_remove) {
-            $fids_remove[] = $to_remove['fid'];
-          }
-          // Remove the files
-          $files = file_load_multiple($fids_remove);
-          foreach ($files as $file) {
-            file_delete($file);
-            $num_deleted++;
+
+          $num_to_remove = $files_to_remove->rowCount();
+          if ($num_to_remove > 0) {
+            $fids_remove = array();
+
+            foreach ($files_to_remove as $to_remove) {
+              $fids_remove[] = $to_remove->fid;
+              // $fids_remove[] = $to_remove['fid'];
+            }
+            // Remove the files (May not be the best way of doing this...)
+            //$files = file_load_multiple($fids_remove);
+            //foreach ($files as $file) {
+            //  file_delete($file, TRUE);
+            //  $num_deleted++;
+            //}
+            // Cycle through the fids we are to remove
+            foreach ($fids_remove as $fid) {
+              // Remove the files (May not be the best way of doing this...)
+              entity_delete('file', $fid);
+              // Remove references to image in morphbank_images
+              $delete = db_delete('morphbank_images')
+                ->condition('fid', $fid)
+                ->execute();
+            }
           }
         }
         drupal_set_message(t('Morphbank harvest complete'));
@@ -477,7 +492,6 @@ function _process_response($response, $term_name, $tid, $hid) {
     ->fields('m', array('mid', 'last_modified', 'fid'))
     ->condition('morphbank_image_id', $morphbank_image_id)
     ->execute();
-
   $on_disk = $query_result->rowCount(); // do not use count($query_result)
   $get_file = TRUE;
   if ($on_disk) {
@@ -501,8 +515,6 @@ function _process_response($response, $term_name, $tid, $hid) {
     $morphbank_specimen = $response->specimen;
     $morphbank_specimen_id = (int) $morphbank_specimen->morphbank;
 
-    // TODO: Grab the view identifier here and try to find it in Imaging technique vocabulary
-/**/
     // Perform update/insert on morphbank_images table as appropriate
     if ($get_file) { // Did we add/update the file?
       if ($on_disk) { // Updated (changed)
@@ -547,7 +559,6 @@ function _process_response($response, $term_name, $tid, $hid) {
       }
       // Check to see that add/update was successful, then create link of
 
-
     } else { // We did not retrieve the file (dates of last change match), but it was returned in the query, so update hid in morphbank_images
       // If record is not updated with hid, it will be deleted if user selects remove old files
       if ($mid > 0) {
@@ -572,14 +583,14 @@ function _process_response($response, $term_name, $tid, $hid) {
 
     // Also want to link the file to the term we just searched on
     _update_file_links($fid, $tid, $morphbank_view_id);
-/*
+
     // TODO: This is how far testing has reached
     // TODO: method is buggy
     // Finally, check to see if any links to Specimen/Observation nodes need to be removed (say, for example, if the
     //   Morphbank specimen ID changed)
-    _remove_outdated_links($fid, $morphbank_specimen_id);
-*/
+    // _remove_outdated_links($fid, $morphbank_specimen_id);
   }
+
 
   return $to_return;
 }
@@ -712,6 +723,10 @@ function _update_specimen_links($fid, $morphbank_specimen_id) {
  *
  * @param int $tid
  *   The term ID of the term we just searched on (and recovered this file from search)
+ *
+ * @param int $morphbank_view_id
+ *   The identifier of the view for this image in the Morphbank system; used to link to
+ *   an Imaging Preparation term
  */
 function _update_file_links($fid, $tid, $morphbank_view_id) {
   if ($fid > 0 && $tid > 0) {
@@ -725,9 +740,11 @@ function _update_file_links($fid, $tid, $morphbank_view_id) {
       }
 
       //Make sure this term is not already attached to this image file (via tid)
+      // TODO: Do we want to append or over-write term links here?
       $make_link = TRUE;
       foreach ($current_list as $list_item) {
-        if ($tid == $list_item['tid']){ // refers to field_data_field_taxonomic_name.field_taxonomic_name_tid in database
+      //  if ($tid == $list_item['tid']){ // refers to field_data_field_taxonomic_name.field_taxonomic_name_tid in database
+        if ($tid == $list_item->tid){
           $make_link = FALSE;
           break;
         }
@@ -735,13 +752,11 @@ function _update_file_links($fid, $tid, $morphbank_view_id) {
       if ($make_link) {
         $term_as_array = (array)$tid; // Cast as an array before attaching
         $current_list[] = $term_as_array;
-
         $entity_wrapper->field_taxonomic_name->set($current_list);
         $entity_wrapper->save();
       }
 
       // Second part: see if there is a term in Image Preparation Technique with this Morphbank View ID
-/*
       $vocabularies = taxonomy_get_vocabularies();
       foreach ($vocabularies as $vocabulary) {
         if ($vocabulary->machine_name == 'imaging_technique') {
@@ -749,44 +764,28 @@ function _update_file_links($fid, $tid, $morphbank_view_id) {
           break;
         }
       }
+
       if ($imaging_vid > 0) {
         $imaging_terms = taxonomy_get_tree($imaging_vid);
         if (!is_null($imaging_terms) && count($imaging_terms) > 0) {
           foreach ($imaging_terms as $imaging_term) {
-            if ($morphbank_view_id == $imaging_term->field_morphbank_view_id) {
+            $term_entity = taxonomy_term_load($imaging_term->tid);
+            $view_id_of_term = $term_entity->field_morphbank_view_id[LANGUAGE_NONE][0]['value'];
+            if ($morphbank_view_id == $view_id_of_term) {
               $imaging_tid = $imaging_term->tid;
+              break;
             }
           }
         }
         if ($imaging_tid > 0) {
-          // Uncomment if multiple values are allowed in field (and see below)
-          //$current_list = $entity_wrapper->field_imaging_technique->value();
-
-          if (!$current_list) {
-            $current_list = array();
-          }
           $make_link = TRUE;
-          // If multiple values in this term reference are to be allowed, uncomment the section to avoid overwriting
-          // any values that are already in the field:
-          //Make sure this term is not already attached to this image file (via tid)
-          //foreach ($current_list as $list_item) {
-          //  if ($imaging_tid == $list_item['tid']){ // refers to field_data_field_taxonomic_name.field_taxonomic_name_tid in database
-          //    $make_link = FALSE;
-          //    break;
-          //  }
-          //}
           if ($make_link) {
-            $imaging_term_as_array = (array)$imaging_tid; // Cast as an array before attaching
-            $current_list[] = $imaging_term_as_array;
-
-            $entity_wrapper->field_imaging_technique->set($current_list);
+            $entity_wrapper->field_imaging_technique->set($imaging_tid);
             $entity_wrapper->save();
           }
         } else {
-//drupal_set_message(t('No Imaging Preparation term had morphbank id = @morphbank', array('@morphbank' => $morphbank_view_id)));
         }
       }
-      */
     }
   }
 }
