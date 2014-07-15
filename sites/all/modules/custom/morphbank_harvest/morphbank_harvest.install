@@ -40,6 +40,7 @@ function morphbank_harvest_enable() {
   $field = field_create_field($field);
 
   // Add morphbank specimen ID field to Specimen/Observation content types
+  // TODO: It would be good to put this in the 'Miscellaneous' tab...
   $instance = array(
     'bundle' => 'specimen_observation',
     'entity_type' => 'node',
@@ -85,6 +86,37 @@ function morphbank_harvest_enable() {
       'description' => t('The unique identifier for this image view in the Morphbank system.'),
   );
   field_create_instance($view_instance);
+
+  // Add an instance of taxonomic_name to image files
+  // Only if it does not already exist; furthermore, do not delete on uninstall
+  /*
+  $name_instance = field_info_instance('file', 'field_taxonomic_name', 'image');
+  if (!$name_instance) {
+    $name_instance = array(
+        'bundle' => 'image',
+        'entity_type' => 'file',
+        'field_name' => 'field_taxonomic_name',
+        'type' => 'taxonomy_term_reference',
+        'label' => t('Taxonomic name'),
+        'required' => 0,
+        'default_value' => NULL,
+        'deleted' => '0',
+        'description' => t('Taxon name for this file'),
+        'widget' => array(
+            'active' => 0,
+            'module' => 'taxonomy',
+            'settings' => array(
+                'autocomplete_path' => 'taxonomy/autocomplete',
+                'size' => 60
+            ),
+            'type' => 'taxonomy_autocomplete',
+            'weight' => '10'
+        ),
+    );
+    field_create_instance($name_instance);
+  }
+  */
+
 
   // Make the directory where images will be stored
   // Make it executable?
