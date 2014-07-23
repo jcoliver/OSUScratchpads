@@ -125,8 +125,7 @@ function morphbank_harvest_form_validate($form, &$form_state) {
  *   The form from which to harvest values (maximages, searchunid, removeold)
  */
 function morphbank_harvest_form_submit($form, &$form_state) {
-
-$time_start = time();
+  $time_start = time();
 
   // Find out how many images to save
   $maximages = -1;
@@ -233,7 +232,7 @@ $time_start = time();
           }
         }
 
-// For testing purposes, lets restrict this to those beasts in Liocosmius (festivum, horni, mundum) and insulatum
+// TODO: For testing purposes, lets restrict this to those beasts in Liocosmius (festivum, horni, mundum) and insulatum
 $skip = TRUE;
 if (substr_count($term_name, 'festivum') > 0 || substr_count($term_name, 'horni') > 0 || substr_count($term_name, 'mundum') > 0 || substr_count($term_name, 'insulatum') > 0) {
   $skip = FALSE;
@@ -249,10 +248,9 @@ if (substr_count($term_name, 'festivum') > 0 || substr_count($term_name, 'horni'
               if (count($responses) == 0) { // No images were returned from query
                 $num_no_images++;
               } else { // An array of SimpleXLMObjects returned
-// TODO: Uncomment for more verbose response per query
-//$num_images = count($responses);
-//drupal_set_message(t('***   @num_images images for term @term_name', array('@num_images' => $num_images, '@term_name' => $term_name)));
-
+                // Uncomment for more verbose response per query
+                // $num_images = count($responses);
+                // drupal_set_message(t('***   @num_images images for term @term_name', array('@num_images' => $num_images, '@term_name' => $term_name)));
                 foreach ($responses as $morphbank_response) {
                   $result = _process_response($morphbank_response, $term_name, $tid, $hid);
                   $found_result = FALSE;
@@ -293,7 +291,6 @@ if (substr_count($term_name, 'festivum') > 0 || substr_count($term_name, 'horni'
           ->execute();
 
         // If no problems, remove old files, if appropriate
-        //TODO: Need cleanup first by removing links to specimens?
         if ($remove_old_files) {
 
           $files_to_remove = db_select('morphbank_images', 'm')
@@ -342,10 +339,9 @@ if (substr_count($term_name, 'festivum') > 0 || substr_count($term_name, 'horni'
   } else {
     drupal_set_message(t('Empty vocabulary selected (vid = @vid)', array('@vid' => $vid)));
   }
-$time_end = time();
-$total_seconds = $time_end - $time_start;
-drupal_set_message(t('Total time: @time seconds', array('@time' => $total_seconds)));
-
+  $time_end = time();
+  $total_seconds = $time_end - $time_start;
+  drupal_set_message(t('Total time: @time seconds', array('@time' => $total_seconds)));
 }
 
 /**
@@ -390,7 +386,7 @@ function _query_morphbank($term_name, $maximages) {
 
   //Make sure code == 200
   $code = $result->code;
-  if ($code == 200) { //TODO: not 201, too?
+  if ($code == 200) { // What about 201?
     // Convert the 'data' object returned from drupal_http_request from string to an XML object
     // Suppressing warning in case Morphbank is returning malformed XML
     if ($response_xml = simplexml_load_string($result->data, "SimpleXMLElement", $options = LIBXML_NOERROR)) {
@@ -560,8 +556,8 @@ function _process_response($response, $term_name, $tid, $hid) {
     // Now need to check for adding links to Specimen/Observation nodes
     _update_specimen_links($fid, $morphbank_specimen_id);
 
-    // Also want to link the file to the term we just searched on
-    _update_file_links($fid, $tid, $morphbank_view_id);
+    // Also want to link the file to the term we just searched on, and include Morphbank's image ID
+    _update_file_links($fid, $tid, $morphbank_view_id, $morphbank_image_id);
 
     // Finally, check to see if any links to Specimen/Observation nodes need to be removed (say, for example, if the
     //   Morphbank specimen ID changed)
@@ -649,7 +645,7 @@ function _update_specimen_links($fid, $morphbank_specimen_id) {
 
     if (count($node_result['node']) > 0) {
       $node_ids = array_keys($node_result['node']);
-      $nid = $node_ids[0]; // TODO: A cludge?  Perhaps, but there should only be 0 or 1 Specimen/Observation node(s) with this Morphbank specimen ID
+      $nid = $node_ids[0]; // A cludge?  Perhaps, but there should only be 0 or 1 Specimen/Observation node(s) with this Morphbank specimen ID
       $node = node_load($nid);
       $file = file_load($fid);
 
@@ -697,6 +693,7 @@ function _update_specimen_links($fid, $morphbank_specimen_id) {
  *   vocabulary have a value in field_morphbank_view_id that matches passed
  *   $morphbank_view_id.  If so, updates field_imaging_technique for file identified
  *   by $fid and the appropriate term ID in the imaging_technique vocabulary.
+ *   Also stores the Morphbank image ID in the image file content
  *
  * @param int $fid
  *   The file ID of the file we just added
@@ -707,8 +704,11 @@ function _update_specimen_links($fid, $morphbank_specimen_id) {
  * @param int $morphbank_view_id
  *   The identifier of the view for this image in the Morphbank system; used to link to
  *   an Imaging Preparation Technique term
+ *
+ * @param int $morphbank_image_id
+ *   The identifier of the image in the Morphbank system; just serves storage purpose now
  */
-function _update_file_links($fid, $tid, $morphbank_view_id) {
+function _update_file_links($fid, $tid, $morphbank_view_id, $morphbank_image_id) {
   if ($fid > 0 && $tid > 0) {
     $entity_wrapper = entity_metadata_wrapper('file', $fid);
 
@@ -767,6 +767,12 @@ function _update_file_links($fid, $tid, $morphbank_view_id) {
             $entity_wrapper->save();
           }
         }
+      }
+
+      // Third part: add the Morphbank image ID
+      if ($morphbank_image_id > 0) {
+        $entity_wrapper->field_morphbank_image_id->set($morphbank_image_id);
+        $entity_wrapper->save();
       }
     }
   }
