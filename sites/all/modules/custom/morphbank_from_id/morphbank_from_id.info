@@ -1,6 +1,0 @@
-name = "Morphbank Image from ID"
-description = "Development module for managing files from Morphbank."
-package = Morphbank
-core = 7.x
-version = 0.1
-files[] = morphbank_from_id.module

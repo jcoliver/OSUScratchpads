@@ -9,7 +9,7 @@
 /**
  * The URL for the morphbank service; append 'request' for queries
  */
-//define("MORPHBANK_SERVICE", "http://services.morphbank.net/mb3/");
+//define("MORPHBANK_SERVICE", "http://services.morphbank.net/mb3/"); // TODO: use production site when it is back online
 define("MORPHBANK_SERVICE", "http://services.dev.morphbank.net/mbsvc3/");
 
 /**
