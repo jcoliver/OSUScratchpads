@@ -5,12 +5,13 @@
  */
 
 //TODO: For this to work with ~500 terms, had to change browser timeout to 60 seconds
+// Implementing some sort of AJAX handling might be warranted for long processing
 
 /**
  * The URL for the morphbank service; append 'request' for queries
  */
 //define("MORPHBANK_SERVICE", "http://services.morphbank.net/mb3/"); // TODO: use production site when it is back online
-define("MORPHBANK_SERVICE", "http://services.dev.morphbank.net/mbsvc3/");
+define("MORPHBANK_SERVICE", "http://services.dev.morphbank.net/mbsvc3prod/");
 
 /**
  * The URL for morphbank records
@@ -26,7 +27,6 @@ define("MORPHBANK_IMAGE_URL", "http://images.morphbank.net/");
  * Implements hook_menu().
  */
 function morphbank_harvest_menu() {
-  // TODO: include date of last harvest when presenting form (in description?)
   $items['admin/config/system/morphbank_harvest'] = array(
     'title' => 'Morphbank harvest',
     'description' => t('Harvests images from Morphbank for a given vocabulary'),
@@ -92,7 +92,6 @@ function morphbank_harvest_form() {
   $form['submit'] = array(
     '#type' => 'submit',
     '#value' => t('Harvest'),
-//    '#id' => 'morphbank-harvest-submit',
   );
   return $form;
 }
@@ -232,13 +231,6 @@ function morphbank_harvest_form_submit($form, &$form_state) {
           }
         }
 
-// TODO: For testing purposes, lets restrict this to those beasts in Liocosmius (festivum, horni, mundum) and insulatum
-$skip = TRUE;
-if (substr_count($term_name, 'festivum') > 0 || substr_count($term_name, 'horni') > 0 || substr_count($term_name, 'mundum') > 0 || substr_count($term_name, 'insulatum') > 0) {
-  $skip = FALSE;
-}
-
-
         if (!$skip){
           // Make sure Morphbank is responsive
           if (file_get_contents(MORPHBANK_SERVICE)) {
@@ -363,7 +355,6 @@ function _query_morphbank($term_name, $maximages) {
   $search_terms = array(
       'method' => 'taxon',
       'objecttype' => 'Image',
-//      'format' => 'id', //TODO: use if Morphbank's XML service is offline
       'format' => 'svc',
       'taxonName' => $term_name,
       'limit' => $maximages,
@@ -391,19 +382,12 @@ function _query_morphbank($term_name, $maximages) {
     // Suppressing warning in case Morphbank is returning malformed XML
     if ($response_xml = simplexml_load_string($result->data, "SimpleXMLElement", $options = LIBXML_NOERROR)) {
 
-  //TODO: use if Morphbank's XML service is offline
-//    if (is_null($response_xml->numResultsReturned)) {
       if (is_null($response_xml->numReturned)) { // No numReturned element, something probably went wrong
         return FALSE;
       }
 
       $response_array = array();
-/*
-    //TODO: use if Morphbank's XML service is offline
-      foreach ($response_xml->id as $id) {
-        $response_array[] = $id;
-      }
-/**/
+
       foreach ($response_xml->object as $object) {
         $obj_attributes = $object->attributes();
         if ($obj_attributes['type'] == "Image") {
