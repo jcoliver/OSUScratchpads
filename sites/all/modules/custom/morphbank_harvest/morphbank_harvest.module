@@ -5,7 +5,6 @@
  */
 
 //TODO: For this to work with ~500 terms, had to change browser timeout to 60 seconds
-
 // Implementing some sort of AJAX handling might be warranted for long processing
 
 /**
