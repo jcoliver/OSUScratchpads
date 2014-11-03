@@ -3,6 +3,7 @@ sites/*/settings*.php
 sites/*/files
 sites/*/private
 
+
 # Examples/Devel modules
 sites/all/modules/contrib/examples
 sites/all/modules/contrib/devel
@@ -23,3 +24,6 @@ index2.php
 
 # Files included for Vagrant that should not be committed
 scratchpads_twitter.ini
+cache
+sites/default/files
+sites/default/settings.php

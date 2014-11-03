@@ -2916,7 +2916,14 @@ function hook_file_copy($file, $source) {
   if (strpos($file->filename, $file_user->name) !== 0) {
     $file->filename = $file_user->name . '_' . $file->filename;
     $file->save();
+  $file_user = user_load($file->uid);
+  // Make sure that the file name starts with the owner's user name.
+  if (strpos($file->filename, $file_user->name) !== 0) {
+    $file->filename = $file_user->name . '_' . $file->filename;
+    $file->save();
 
+    watchdog('file', t('Copied file %source has been renamed to %destination', array('%source' => $source->filename, '%destination' => $file->filename)));
+  }
     watchdog('file', t('Copied file %source has been renamed to %destination', array('%source' => $source->filename, '%destination' => $file->filename)));
   }
 }

@@ -95,7 +95,7 @@ function scratchpads_species_module_implements_alter(&$implementations, $hook){
     'form_taxonomy_form_vocabulary_alter',
     'form_alter',
     'menu',
-    'menu_alter'
+    'menu_alter',
   )) && isset($implementations['scratchpads_species'])){
     $group = $implementations['scratchpads_species'];
     unset($implementations['scratchpads_species']);
@@ -403,8 +403,7 @@ function scratchpads_species_views_pre_view(&$view, &$display_id, &$args){
       case 'species_slideshow':
       case 'species_biblio':
       case 'species_specimen_observation':
-      case 'species_map':
-        // Add children to media, literature, map and specimen views
+        // Add children to media, literature and specimen views
         if(!count($args)){
           $args[0] = _scratchpads_species_get_descendant_tids(arg(2));
         }
@@ -491,12 +490,6 @@ function scratchpads_species_slickgrid_view_arguments_alter(&$arguments, $view){
         }
         $arguments[0] = implode('+', $tids);
       }
-      switch($view->name){
-        case 'species_specimen_observation':
-          // Add children to media, literature and specimen views
-          $arguments[0] = _scratchpads_species_get_descendant_tids($term->tid);
-          break;
-      }
     }
   }
 }
@@ -529,7 +522,7 @@ function scratchpads_species_preprocess_views_view(&$vars){
           if(!count($view->result)){
             foreach($vars['classes_array'] as $id => $class_string){
               if(strpos($class_string, 'grid-4') !== FALSE){
-                $vars['classes_array'][$id] = str_replace('grid-4', '', $class_string);
+                $vars['classes_array'][$id] = str_replace('grid-4', 'grid-8', $class_string);
               }
             }
           }
@@ -826,17 +819,12 @@ function scratchpads_species_get_species_node_types($tab = NULL){
  * Return a list of default species tabs
  */
 function scratchpads_species_get_default_tabs(){
-  t('Descriptions');
-  t('Media');
-  t('Literature');
-  t('Maps');
-  t('Specimens');
   $tabs = array(
-    'descriptions' => 'Descriptions',
-    'media' => 'Media',
-    'literature' => 'Literature',
-    'maps' => 'Maps',
-    'specimens' => 'Specimens'
+    'descriptions' => t('Descriptions'),
+    'media' => t('Media'),
+    'literature' => t('Literature'),
+    'maps' => t('Maps'),
+    'specimens' => t('Specimens')
   );
   drupal_alter('scratchpads_species_tabs', $tabs);
   return $tabs;

@@ -3,4 +3,5 @@ name = "Google Scholar Widget"
 description = "Displays Google Scholar search results within a taxonomy term page."
 package = "Widgets"
 dependencies[] = scratchpads_species
+tool=yes
 files[] = tests/googlescholar.selenium.test

@@ -1,5 +1,4 @@
 <?php
-
 /**
  * class PublicationHtmlFormatXMLModifier
  *
@@ -22,12 +21,12 @@ class PublicationHtmlFormatXMLModifier extends PublicationHtmlFormatChangeCitati
   public function insert_value($schema, $tag, $value){
     if(is_string($value)){
       // Replace and track table citations
-      $value = preg_replace_callback('/(<tbls-citation.*?citation_id=["\'](.*?)["\'].*?>).*?(<\/tbls-citation>)/', array(
+      $value = preg_replace_callback('/(<tbls_citation.*?citation_id=["\'](.*?)["\'].*?>).*?(<\/tbls_citation>)/', array(
         $this,
         '_replace_table_citation'
       ), $value);
       // Replace and track figure citations
-      $value = preg_replace_callback('/(<fig-citation.*?citation_id=["\'](.*?)["\'].*?>).*?(<\/fig-citation>)/', array(
+      $value = preg_replace_callback('/(<fig_citation.*?citation_id=["\'](.*?)["\'].*?>).*?(<\/fig_citation>)/', array(
         $this,
         '_replace_figure_citation'
       ), $value);
@@ -54,11 +53,10 @@ class PublicationHtmlFormatXMLModifier extends PublicationHtmlFormatChangeCitati
         // Re-order tables
         $new_values = array();
         $max_order = count($this->table_ids);
-        foreach($values as $collection){
-          $lang = field_language('field_collection_item', $collection, 'field_publication_table_id');
-          $table_id = $collection->field_publication_table_id[$lang][0]['value'];
+        foreach ($values as $collection) {
+          $table_id = $collection->field_publication_table_id[LANGUAGE_NONE][0]['value'];
           $order = array_search($table_id, $this->table_ids);
-          if($order === FALSE){
+          if ($order === FALSE) {
             $order = $max_order++;
           }
           $new_values[$order] = $collection;
@@ -69,11 +67,10 @@ class PublicationHtmlFormatXMLModifier extends PublicationHtmlFormatChangeCitati
         // Re-order figures
         $new_values = array();
         $max_order = count($this->figure_ids);
-        foreach($values as $collection){
-          $lang = field_language('field_collection_item', $collection, 'field_publication_figure_figure');
-          $fid = $collection->field_publication_figure_figure[$lang][0]['fid'];
+        foreach ($values as $collection) {
+          $fid = $collection->field_publication_figure_figure[LANGUAGE_NONE][0]['fid'];
           $order = array_search($fid, $this->figure_ids);
-          if($order === FALSE){
+          if ($order === FALSE) {
             $order = $max_order++;
           }
           $new_values[$order] = $collection;

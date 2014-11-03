@@ -85,9 +85,7 @@ function _tinytax_sort_terms($a, $b){
     if($a_usage != $b_usage){return $a_usage ? 1 : -1;}
   }
   // Compare Weight
-  if(!empty($a->weight) && !empty($b->weight)){
-    if($a->weight != $b->weight){return $a->weight > $b->weight;}
-  }
+  if($a->weight != $b->weight){return $a->weight > $b->weight;}
   // Compare Name
   return strcasecmp($a->name, $b->name);
 }

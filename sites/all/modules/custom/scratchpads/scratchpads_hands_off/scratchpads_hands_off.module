@@ -187,13 +187,11 @@ function scratchpads_hands_off_form_field_ui_field_overview_form_alter(&$form, &
 function scratchpads_hands_off_field_ui_overview_submit($form, &$form_state){
   // We get the error messages, and clear any thrown by the field_ui module
   $messages = drupal_get_messages('error');
-  if(!empty($messages['error'])){
-    foreach($messages['error'] as $message){
-      if($message != t('The field %label cannot be added because it is locked.', array(
-        '%label' => $form_state['values']['fields']['_add_existing_field']['label']
-      ))){
-        drupal_set_message($message, 'error');
-      }
+  foreach($messages['error'] as $message){
+    if($message != t('The field %label cannot be added because it is locked.', array(
+      '%label' => $form_state['values']['fields']['_add_existing_field']['label']
+    ))){
+      drupal_set_message($message, 'error');
     }
   }
   // Add existing field.
@@ -287,7 +285,6 @@ function scratchpads_hands_off_form_alter(&$form, &$form_state, $form_id){
           case 'system':
           case 'scratchpads_pages':
           case 'uwho_client':
-          case 'scratchpads_show_taxa_revisions':
             unset($form['blocks'][$form_block_key]);
             break;
           case 'views':
@@ -546,7 +543,6 @@ function _scratchpads_hands_off_hidden_views(){
     'slickgrid_admin_media_gallery',
     'species_map',
     'species_specimen_observation',
-    'tweets',
     'users_references',
     'weight'
   );
@@ -563,11 +559,9 @@ function _scratchpads_hands_off_hidden_views(){
  * Implements hook_preprocess_HOOK
  */
 function scratchpads_hands_off_preprocess_table(&$variables){
-  if(!user_access('scratchpad team')){
-    if(strpos($_GET['q'], 'admin/structure/views') === 0 && !user_access('scratchpad team')){
-      foreach(_scratchpads_hands_off_hidden_views() as $key){
-        unset($variables['rows'][$key]);
-      }
+  if(strpos($_GET['q'], 'admin/structure/views') === 0 && !user_access('scratchpad team')){
+    foreach(_scratchpads_hands_off_hidden_views() as $key){
+      unset($variables['rows'][$key]);
     }
   }
 }
@@ -644,8 +638,7 @@ function scratchpads_hands_off_contextual_links_view_alter(&$element, $items){
     'facetapi',
     'apachesolr_search',
     'scratchpads_blocks',
-    'system',
-    'scratchpads_show_taxa_revisions'
+    'system'
   )) && !user_access('scratchpad team')){
     $element = array();
   }

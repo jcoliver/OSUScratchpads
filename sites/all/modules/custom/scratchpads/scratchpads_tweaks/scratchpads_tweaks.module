@@ -351,19 +351,13 @@ function scratchpads_tweaks_form_alter(&$form, &$form_state, $form_id){
       }else if(substr($form_id, -10) == '_node_form'){
         // Add the UUID to the title of the page.
         if($form['nid']['#value']){
-          $extra = '';
-          if($form['type']['#value'] == 'group'){
-            if(($og = og_get_group('node', $form['nid']['#value'])) !== FALSE){
-              $extra = ' : Group ID = ' . $og->gid;
-            }
-          }
           $guid = db_select('feeds_item', 'f')->fields('f', array(
             'guid'
           ))->condition('entity_type', 'node')->condition('entity_id', $form['nid']['#value'])->execute()->fetchField();
           if(!$guid){
             $guid = $form['#node']->uuid;
           }
-          drupal_set_title(drupal_get_title() . ' <span class="uuid" title="NID : GUID">(' . $form['nid']['#value'] . ' : ' . $guid . $extra . ')</span>', PASS_THROUGH);
+          drupal_set_title(drupal_get_title() . ' <span class="uuid" title="NID : GUID">(' . $form['nid']['#value'] . ' : ' . $guid . ')</span>', PASS_THROUGH);
         }
       }
   }
@@ -514,6 +508,28 @@ function scratchpads_tweaks_mail_alter(&$message){
 }
 
 /**
+ * Implements hook_mail().
+ */
+function scratchpads_tweaks_mail($key, &$message, $params){
+  switch($key){
+    case 'nominate-for-deletion':
+      $url = url('', array(
+        'absolute' => TRUE
+      ));
+      $message['subject'] = '[Inactive Scratchpad] ' . $url . ' may be inactive';
+      $site_created = format_date(variable_get('install_time', 0));
+      $message['body'] = array(
+        "The Scratchpad at $url has been inactive for over six months, or has fewer than ten nodes:",
+        "Site created: {$site_created}\nLast login: {$params['login']}\nLast edit: {$params['edit']}\nNumber of nodes (not including biblio): {$params['nodes']}\n",
+        'Thanks,',
+        'Scratchpads Support Team',
+        "--\nsupport@scratchpads.eu"
+      );
+      break;
+  }
+}
+
+/**
  * Implements hook_form_FORM_ID_alter().
  */
 function scratchpads_tweaks_form_user_profile_form_alter(&$form, &$form_state, $form_id){
@@ -535,23 +551,6 @@ function scratchpads_tweaks_form_user_profile_form_alter(&$form, &$form_state, $
 function scratchpads_tweaks_views_default_views_alter(&$views){
   if(isset($views['feeds_log'])){
     unset($views['feeds_log']);
-  }
-  foreach(array_keys($views) as $view_id){
-    // Don't cache VBO or Slickgrid views.  Note, this relies on the
-    // Scratchpads Team naming convention for Slickgrid and VBO views, so may
-    // break if users create their own views.
-    if(strpos($view_id, '_vbo_') || strpos($view_id, 'slickgrid_') === 0 || strpos($view_id, 'publication_') === 0 || strpos($view_id, 'species_') === 0){
-      continue;
-    }
-    foreach(array_keys($views[$view_id]->display) as $display_id){
-      $views[$view_id]->display[$display_id]->display_options['cache'] = array(
-        'type' => 'time',
-        'results_lifespan' => -1,
-        'results_lifespan_custom' => 0,
-        'output_lifespan' => 300,
-        'output_lifespan_custom' => 0
-      );
-    }
   }
 }
 
@@ -673,7 +672,6 @@ function scratchpads_tweaks_field_widget_info_alter(&$info){
 function scratchpads_tweaks_form_node_type_form_alter(&$form, &$form_state){
   // replace the element with its expanded items
   $form['workflow']['node_options']['#value'] = drupal_map_assoc($form['workflow']['node_options']['#default_value']);
-  $form['workflow']['node_options']['#attributes'] = array();
   $form['workflow']['node_options'] = form_process_checkboxes($form['workflow']['node_options']);
   $form['workflow']['node_options']['revision']['#description'] = t("Revisions let you track differences between multiple versions of a node. When enabled, all previous versions of a node will be visible under a new 'Revisions' tab in. Users will be able to view older versions of this node and editors will be able to revert the node to an older version.");
   $form['workflow']['node_options']['status']['#description'] = t('Select to make content visible to all users. If not selected content will only be visible through the administration menu.');

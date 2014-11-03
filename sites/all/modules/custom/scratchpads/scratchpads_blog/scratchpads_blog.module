@@ -76,7 +76,7 @@ function scratchpads_blog_block_view($delta = ''){
       'scratchpads_blog_taxonomy' => array(
         '#theme' => 'item_list',
         '#items' => scratchpads_blog_taxonomy(),
-        '#title' => t('Filter by Category'),
+        '#title' => t('Filter by Taxonomy'),
         '#type' => 'ul'
       ),
       'scratchpads_blog_date' => array(

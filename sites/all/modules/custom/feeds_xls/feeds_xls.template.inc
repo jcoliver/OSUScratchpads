@@ -25,9 +25,8 @@ function feeds_xls_get_populated_template(){
     }
     header('Cache-Control: max-age=0');
     readfile($_SESSION['feeds_xls']['csv_path'] . '.excel');
-    // delete the files
+    // delete the file
     drupal_unlink($_SESSION['feeds_xls']['csv_path'] . '.excel');
-    drupal_unlink($_SESSION['feeds_xls']['csv_path']);
     unset($_SESSION['feeds_xls']);
     exit();
   }else{
@@ -256,15 +255,6 @@ function feeds_xls_create_csv_of_data($feeds_importer, &$context){
         }
       }else{
         switch($mapping['target']){
-          case 'group_audience':
-            $gids = array();
-            foreach($entity->{$mapping['target']} as $language => $values){
-              foreach($entity->{$mapping['target']}[$language] as $value){
-                $gids[] = $value['gid'];
-              }
-            }
-            $row_values[$key] = implode('|', $gids);
-            break;
           case 'guid':
             // Look for this entity in the feeds_item table.  If not there, we
             // generate an entry for it.
@@ -606,13 +596,13 @@ function feeds_xls_set_headers($feeds_importer, $objPHPExcel, $output = 'php://o
           $objValidation->setErrorTitle('Input error');
           $objValidation->setError(t('Your input did not match one of the allowed values.'));
           $objValidation->setPromptTitle(t('Allowed input'));
-          $row = 0;
           foreach($allowed_values as $allowed_value){
             $num_sheets = count($objPHPExcel->getAllSheets());
             if($num_sheets == 1){
               $objPHPExcel->createSheet();
               $objPHPExcel->getSheet(1)->setTitle('PermittedValues');
             }
+            $row = 0;
             if(is_array($allowed_value) && isset($allowed_value['vocabulary'])){
               // Get the vocabulary so we can get the vid.
               $vocabulary = taxonomy_vocabulary_machine_name_load($allowed_value['vocabulary']);

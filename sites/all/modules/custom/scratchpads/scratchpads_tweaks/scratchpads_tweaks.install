@@ -318,8 +318,6 @@ function scratchpads_tweaks_install(){
   ));
   // Use our mirror of the CC images site
   variable_set('creative_commons_image_uri', 'http://cc-mirror.scratchpads.eu/l');
-  // Set the advagg module settings
-  scratchpads_tweaks_update_7081();
 }
 
 /**
@@ -1408,87 +1406,4 @@ function scratchpads_tweaks_update_7078(){
   module_enable(array(
     'syslog'
   ));
-}
-
-/**
- * Uninstall Google Scholar module (Google broke it).
- * Enable the Taxonomy revisions modules.
- */
-function scratchpads_tweaks_update_7079(){
-  module_disable(array(
-    'googlescholar'
-  ));
-  drupal_uninstall_modules(array(
-    'googlescholar'
-  ));
-  module_enable(array(
-    'scratchpads_show_taxa_revisions'
-  ));
-}
-
-/**
- * Enable the advagg modules.
- */
-function scratchpads_tweaks_update_7080(){
-  module_enable(array(
-    'advagg',
-    'advagg_css_compress',
-    'advagg_js_compress'
-  ));
-}
-
-/**
- * Set the settings for the advagg module.
- */
-function scratchpads_tweaks_update_7081(){
-  variable_set('advagg_enabled', TRUE);
-  variable_set('advagg_gzip', TRUE);
-  variable_set('advagg_core_groups', FALSE);
-  variable_set('advagg_use_httprl', FALSE);
-  variable_set('advagg_cache_level', 1);
-  variable_set('advagg_combine_css_media', 1);
-  variable_set('advagg_ie_css_selector_limiter', 1);
-  variable_set('advagg_ie_css_selector_limiter_value', 4095);
-  variable_set('advagg_css_fix_type', 1);
-  variable_set('advagg_js_fix_type', 1);
-  variable_set('advagg_css_compressor', 1);
-  variable_set('advagg_css_inline_compressor', 1);
-  variable_set('advagg_css_inline_compress_if_not_cacheable', 1);
-  variable_set('advagg_js_compressor', 1);
-  variable_set('advagg_js_inline_compressor', 1);
-  variable_set('advagg_js_inline_compress_if_not_cacheable', 1);
-  variable_set('advagg_js_compress_packer', 1);
-}
-
-/**
- * Delete variables related to the emailing of inactive sites.
- */
-function scratchpads_tweaks_update_7082(){
-  variable_del('scratchpads_tweaks_site_active');
-  variable_del('scratchpads_tweaks_account_notify');
-  variable_del('scratchpads_tweaks_site_active_check_time');
-}
-
-/**
- * Disable the advagg_css_compress and advagg_js_compress modules - they appear
- * to seriously affect the "cold start" times of a Scratchpad.
- */
-function scratchpads_tweaks_update_7083(){
-  foreach(array(
-    'advagg_css_compressor',
-    'advagg_css_inline_compressor',
-    'advagg_css_inline_compress_if_not_cacheable',
-    'advagg_js_compressor',
-    'advagg_js_inline_compressor',
-    'advagg_js_inline_compress_if_not_cacheable',
-    'advagg_js_compress_packer'
-  ) as $variable_del){
-    variable_del($variable_del);
-  }
-  $uninstall = array(
-    'advagg_css_compress',
-    'advagg_js_compress'
-  );
-  module_disable($uninstall);
-  drupal_uninstall_modules($uninstall);
 }

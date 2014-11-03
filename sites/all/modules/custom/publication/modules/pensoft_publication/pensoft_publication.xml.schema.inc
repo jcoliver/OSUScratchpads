@@ -51,19 +51,21 @@ function _pensoft_publication_xml_treatment_field($context, $field, $alt = FALSE
   return $value;
 }
 
-function _pensoft_publication_xml_process_continent_ocean($context, $select){
-  try{
-    $value = $context->wrapper->field_continent_or_ocean->value();
-  } catch (Exception $e){
-    throw new Exception("Failed to obtain continent");
+function _pensoft_publication_xml_process_continent_ocean($context, $value, $choice){
+  if (!$value){
+    try{
+      $value = $context->wrapper->field_continent_or_ocean->value();
+    } catch (Exception $e){
+      throw new Exception("Failed to obtain continent");
+    }
   }
   if (empty($value)){
     return '';
   }
   $is_ocean = preg_match('/(ocean|atlantic|pacific)/i', $value);
-  if ($is_ocean && $select == 'ocean'){
+  if ($is_ocean && $choice == 'ocean'){
     return $value;
-  } else if (!$is_ocean && $select == 'continent'){
+  } else if (!$is_ocean && $choice == 'continent'){
     return $value;
   }
   return '';
@@ -85,7 +87,7 @@ function _pensoft_publication_xml_process_classification($context){
 /**
  * Process function for biblio values
  */
-function _publication_xml_process_biblio($context, $value_type){
+function _pensoft_publication_xml_process_biblio($context, $value_type){
   $type_map = array(
     100 => 'Book',
     101 => 'Book chapter',
@@ -537,8 +539,7 @@ function _pensoft_publication_treatment_section_test($context, $type){
   $term = $context->wrapper->field_taxonomic_name[0]->value();
   $tw = entity_metadata_wrapper('taxonomy_term', $term);
   $rank = $tw->field_rank->value();
-  $lang = field_language('relation', $context->relation, 'field_publication_treat_type');
-  $treatment_type = $context->relation->field_publication_treat_type[$lang][0]['value'];
+  $treatment_type = $context->relation->field_publication_treat_type[LANGUAGE_NONE][0]['value'];
   $biovids = variable_get('biological_vids', array());
   if (empty($biovids[$term->vid])){
     return FALSE;
@@ -571,8 +572,7 @@ function _pensoft_publication_xml_treatment_include_field($context, $field){
   if (!$context->wrapper->get($field)->value()){
     return FALSE;
   }
-  $lang = field_language('relation', $context->relation, 'field_publication_treat_fields');
-  $include = explode(',', $context->relation->field_publication_treat_fields[$lang][0]['value']);
+  $include = explode(',', $context->relation->field_publication_treat_fields[LANGUAGE_NONE][0]['value']);
   return in_array($field, $include);
 }
 
@@ -1326,7 +1326,6 @@ function pensoft_publication_schema_array_pensoft_publication_systematics($varia
         '#comment' => "'extant' or 'fossil' or ''. This is part of Specimen for us, not taxon ?"
       ) // XXX
     ),
-    /*
     'habitat' => array(
       '#condition' => function($context) {
         $hab_value = $context->wrapper->field_habitat->value();
@@ -1342,7 +1341,6 @@ function pensoft_publication_schema_array_pensoft_publication_systematics($varia
         '#comment' => "'terrestrial', 'marine', 'freshwater', 'N/A' or 'empty'"
       )
     )
-    */
     // parasite_of, XXX we will have this with the Relation branch ?
     // classification_root_id, XXX Not sure what this is ?
     // taxon_treatment_host_of, XXX we will have this with the Relation branch ?
@@ -1983,7 +1981,7 @@ function pensoft_publication_schema_array_pensoft_publication_references($variab
     'reference' => array(
       '#attributes' => array(
         'id' => function($context) {
-          return $context->raw_value->nid;
+          return $context->raw_value['nid'];
         }
       ),
       '#field' => 'field_publication_references',
@@ -2327,23 +2325,14 @@ function pensoft_publication_schema_array_pensoft_publication_figures($variables
       ),
       '#attributes' => array(
         'id' => function($context) {
-           $wrapper = entity_metadata_wrapper('field_collection_item', $context->raw_value);
+           $collection = reset(entity_load('field_collection_item', array($context->raw_value['value'])));
+           $wrapper = entity_metadata_wrapper('field_collection_item', $collection);
            return $wrapper->field_publication_figure_figure->file->fid->value();
        }
       ),
-      // fields,
-      'image' => array(
-        'fields' => array(
-          'figure_caption' => array(
-            'value' => array(
-              '#field' => 'field_publication_figure_title'
-            )
-          )
-        )  
+      'caption' => array(
+        '#field' => 'field_publication_figure_title'
       ),
-      // video
-      // multple_image_plate
-      /*
       'url' => array(
         '#field' => 'field_publication_figure_figure',
         '#process' => '_publication_xml_process_get_file_url'
@@ -2357,6 +2346,11 @@ function pensoft_publication_schema_array_pensoft_publication_figures($variables
           '#field' => 'field_publication_figure_desc',
           '#raw' => TRUE
         )
+      ),
+      /*'#attributes' => array(
+        'id' => '',
+        'is_plate' => '',
+        'type' => ''
       ),
       */
     )
@@ -2389,19 +2383,14 @@ function pensoft_publication_schema_array_pensoft_publication_tables($variables)
            return $wrapper->field_publication_table_id->value();
         }
       ),
-      'fields' => array(
-        'table_caption' => array(
-          'value' => array(
-            '#field' => 'field_publication_table_title'
-          )
-        ),
-        'table_editor' => array(
-          'value' => array(
-            '#field' => 'field_publication_table',
-            '#raw' => TRUE
-          )
+      'caption' => array(
+          '#field' => 'field_publication_table_title'
+      ),
+      'content' => array(
+        'value' => array(
+          '#field' => 'field_publication_table',
+          '#raw' => TRUE
         )
-        // table_number
       )
     )
   );

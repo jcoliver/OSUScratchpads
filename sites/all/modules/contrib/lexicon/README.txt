@@ -22,10 +22,10 @@ The main differences with the Glossary module are that the Lexicon module:
 
 * Produces output that is valid W3C XHTML 1.0 Strict.
 * Enables showing lists of terms without marking the terms in content (this is still an option).
-  You can choose which vocabularies act as Lexicons and you don’t bind them to input filters.
+  You can choose which vocabularies act as Lexicons and you donï¿½t bind them to input filters.
 * Has configurable paths and titles for each Lexicon.
-* Optionally inserts a “go to top” link for each section on the Lexicon page.
-* Optionally “scrolls” to internal links on the Lexicon page.
+* Optionally inserts a ï¿½go to topï¿½ link for each section on the Lexicon page.
+* Optionally ï¿½scrollsï¿½ to internal links on the Lexicon page.
 * Lexicon is also available for Drupal 7
 * From the 7.x-1.4 version and up the Lexicon module uses template files instead of theme functions 
   for output rendering

@@ -1107,7 +1107,7 @@ class PublicationXMLBuilder{
       }
     }
     catch(Exception $e){
-      if(!property_exists($wrapper->raw(), $field)){
+      if(!isset($wrapper->raw()->{$field})){
         throw new Exception(t('Field %field not found at path %path', array(
           '%field' => $field,
           '%path' => implode(' > ', $this->path)
@@ -1392,8 +1392,7 @@ function _publication_xml_load_parent_term($context, $value, $rank = NULL){
   $terms = taxonomy_get_parents($value);
   while(!empty($terms)){
     $current = array_shift($terms);
-    $lang = field_language('taxonomy_term', $current, 'field_rank');
-    if($rank === NULL || $current->field_rank[$lang][0]['value'] == $rank){return array(
+    if($rank === NULL || $current->field_rank[LANGUAGE_NONE][0]['value'] == $rank){return array(
         'entity_type' => 'taxonomy_term',
         'entity' => $current
       );}
@@ -1416,10 +1415,8 @@ function _publication_xml_load_specimen($context, $value){
     unset($location->title);
     $specimen = ((object)(array_merge((array)$specimen, (array)($location))));
   }
-  $lang = field_language('node', $specimen, 'field_collector');
-  $specimen->field_collector[$lang] = array();
-  $lang = field_language('node', $specimen, 'field_identified_by');
-  $specimen->field_identified_by[$lang] = array();
+  $specimen->field_collector[LANGUAGE_NONE] = array();
+  $specimen->field_identified_by[LANGUAGE_NONE] = array();
   return $specimen;
 }
 
