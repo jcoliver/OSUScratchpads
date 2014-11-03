@@ -713,7 +713,8 @@ if (is_array($current_list)) {
   }
 }
 /**/
-            $wrapper->field_media->set($current_list);
+			// TODO: wrap this call to set() in a try/catch
+			$wrapper->field_media->set($current_list);
 drupal_set_message(t('__About to save...'));
             $wrapper->save();
 drupal_set_message(t('__...saved.'));
@@ -722,6 +723,20 @@ drupal_set_message(t('__...saved.'));
       } // End conditional for non-null $file
     } // End conditional for at least one result
   } // End conditional for $fid > 0 and $morphbank_specimen_id > 0
+}
+
+function _remove_specimen_links ($fids) {
+	if (is_array($fids)) {
+		$node_query = new EntityFieldQuery();
+		$node_query->entityCondition('entity_type', 'node')
+		->entityCondition('bundle', 'specimen_observation')
+		->fieldCondition('field_media_fid', 'value', $fids, 'in'); // TODO: check the field name; make sure 'in' works correctly
+//		->fieldCondition('field_morphbank_specimen_id', 'value', $morphbank_specimen_id, '=');
+		$node_result = $node_query->execute();
+		
+		
+		
+	}
 }
 
 /**

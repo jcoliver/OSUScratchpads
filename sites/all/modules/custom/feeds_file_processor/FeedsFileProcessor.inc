@@ -203,8 +203,7 @@ class FeedsFileProcessor extends FeedsProcessor{
     return array(
       'bundle' => 'image',
       'expire' => FEEDS_EXPIRE_NEVER,
-      'author' => 0,
-      'input_format' => filter_fallback_format()
+      'author' => 0
     ) + parent::configDefaults();
   }
 
@@ -218,6 +217,7 @@ class FeedsFileProcessor extends FeedsProcessor{
       $types[$key] = check_plain($value['label']);
     }
     $form = parent::configForm($form_state);
+    unset($form['input_format']);
     $form['bundle'] = array(
       '#type' => 'select',
       '#title' => t('File type'),
@@ -225,7 +225,7 @@ class FeedsFileProcessor extends FeedsProcessor{
         '!feed_id' => $this->id
       )),
       '#options' => $types,
-      '#default_value' => $this->config['bundle']
+      '#default_value' => $this->config['content_type']
     );
     $period = drupal_map_assoc(array(
       FEEDS_EXPIRE_NEVER,
@@ -249,6 +249,17 @@ class FeedsFileProcessor extends FeedsProcessor{
       '#default_value' => $this->config['expire']
     );
     return $form;
+  }
+
+  /**
+   * Override parent::configFormValidate().
+   */
+  public function configFormValidate(&$values){
+    if($author = user_load_by_name($values['author'])){
+      $values['author'] = $author->uid;
+    }else{
+      $values['author'] = 0;
+    }
   }
 
   /**

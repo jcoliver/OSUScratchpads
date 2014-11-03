@@ -13,16 +13,10 @@ function eolapi_callback(){
   }
   $view = views_get_view($_POST['view-name']);
   $view->args[] = $_POST['tid'];
-  if(method_exists($view, 'render')){
-    $output = $view->render('block');
-    if(count($view->result)){
-      echo $output;
-      return;
-    }
+  $output = $view->render('block');
+  if(count($view->result)){
+    echo $output;
   }else{
-    watchdog('eolapi', 'There is an issue with your view @view_name', array(
-      '@view_name' => $_POST['view-name']
-    ));
+    echo "";
   }
-  echo "";
 }

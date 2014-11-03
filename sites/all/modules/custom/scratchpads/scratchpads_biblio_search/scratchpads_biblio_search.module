@@ -19,27 +19,16 @@ function scratchpads_biblio_search_menu_alter(&$items){
  * Implementation of hook_apache_solr_default_sorts_alter()
  */
 function scratchpads_biblio_search_apache_solr_default_sorts_alter(&$default_sorts){
-  $new_sorts = array(
+  $default_sorts = array_merge(array(
     'tus_biblio_year' => array(
       'title' => t('Year'),
       'default' => 'desc'
+    ),
+    'tus_biblio_first_author_lastname' => array(
+      'title' => t('First author surname'),
+      'default' => 'asc'
     )
-  );
-  for($i = 1; $i < 10; $i++){
-    $new_sorts['tus_biblio_author_lastname_' . $i] = array(
-      'title' => t('Author !index last name', array(
-        '!index' => $i
-      )),
-      'default' => 'asc'
-    );
-    $new_sorts['tus_biblio_author_name_' . $i] = array(
-      'title' => t('Author !index full name', array(
-        '!index' => $i
-      )),
-      'default' => 'asc'
-    );
-  }
-  $default_sorts = array_merge($new_sorts, $default_sorts);
+  ), $default_sorts);
 }
 
 /**
@@ -66,13 +55,7 @@ function scratchpads_biblio_search_apache_solr_sortstring_alter(&$sortstring){
         $sortstring = 'tus_biblio_year ' . (isset($_GET['sort']) ? $_GET['sort'] : 'desc');
         break;
       case t('Authors'):
-        $sortstring = array();
-        for($i = 1; $i < 10; $i++){
-          $sortstring[] = 'tus_biblio_author_lastname_' . $i . ' ' . (isset($_GET['sort']) ? $_GET['sort'] : 'asc');
-          $sortstring[] = 'tus_biblio_author_name_' . $i . ' ' . (isset($_GET['sort']) ? $_GET['sort'] : 'asc');
-        }
-        $sortstring[] = 'tus_biblio_year ' . ((isset($_GET['sort']) && $_GET['sort'] == 'desc') ? 'asc' : 'desc');
-        $sortstring = implode(',', $sortstring);
+        $sortstring = 'tus_biblio_first_author_lastname ' . (isset($_GET['sort']) ? $_GET['sort'] : 'asc');
         break;
       case t('Title'):
         $sortstring = 'sort_label ' . (isset($_GET['sort']) ? $_GET['sort'] : 'asc');
@@ -576,12 +559,11 @@ function scratchpads_biblio_search_apachesolr_index_document_build(ApacheSolrDoc
             }else if(is_array($value)){
               switch($key){
                 case 'biblio_contributors':
-                  $i = 0;
+                  $set_first_author_surname = TRUE;
                   foreach($value as $contributor){
-                    $i++;
-                    if($i < 10){
-                      $document->setField('tus_biblio_author_lastname_' . $i, $contributor['lastname']);
-                      $document->setField('tus_biblio_author_name_' . $i, $contributor['name']);
+                    if($set_first_author_surname){
+                      $document->setField('tus_biblio_first_author_lastname', $contributor['lastname']);
+                      $set_first_author_surname = FALSE;
                     }
                     $document->addField('im_biblio_contributor', $contributor['cid']);
                   }
@@ -661,16 +643,10 @@ function scratchpads_biblio_search_facet_autocomplete($type, $search){
   $matches = array();
   switch($type){
     case 'im_biblio_contributor':
-      $condition = db_or()->condition('name', "$search%", 'LIKE')->condition('lastname', "$search%", 'LIKE');
-      $query = db_select('biblio_contributor_data', 'b')->fields('b', array(
+      $matches = db_select('biblio_contributor_data', 'b')->fields('b', array(
         'name',
         'name'
-      ));
-      $query->innerJoin('biblio_contributor', 'c', 'c.cid = b.cid');
-      $query->groupBy('name');
-      $query->orderBy('lastname');
-      $query->condition($condition)->range(0, 10);
-      $matches = $query->execute()->fetchAllKeyed();
+      ))->condition('name', "$search%", 'LIKE')->range(0, 10)->execute()->fetchAllKeyed();
       break;
     case 'tus_biblio_year':
       $matches = db_select('biblio', 'b')->fields('b', array(

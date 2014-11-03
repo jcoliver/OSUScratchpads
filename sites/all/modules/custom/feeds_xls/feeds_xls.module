@@ -23,7 +23,7 @@ function feeds_xls_feeds_plugins(){
  */
 function feeds_xls_menu(){
   return array(
-    'import/%feeds_importer/xlstemplate' => array(
+    'import/%feeds_importer/template' => array(
       'title' => 'Excel template',
       'page callback' => 'feeds_xls_download_template',
       'page arguments' => array(
@@ -231,13 +231,11 @@ function feeds_xls_feeds_set_target_numeric($source, $entity, $target, $value){
     if(!is_numeric($v)){
       // We load the field and try to do the mapping.
       $field = field_info_field($target);
-      if(isset($field['settings']['allowed_values'])){
-        $key = array_search($v, $field['settings']['allowed_values']);
-        if($field && is_numeric($key)){
-          $value[$k] = $key;
-        }else{
-          unset($value[$k]);
-        }
+      $key = array_search($v, $field['settings']['allowed_values']);
+      if($field && is_numeric($key)){
+        $value[$k] = $key;
+      }else{
+        unset($value[$k]);
       }
     }
   }
@@ -249,6 +247,6 @@ function feeds_xls_feeds_set_target_numeric($source, $entity, $target, $value){
  */
 function feeds_xls_admin_paths(){
   return array(
-    'import/*/xlstemplate' => FALSE
+    'import/*/template' => FALSE
   );
 }

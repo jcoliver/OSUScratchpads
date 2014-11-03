@@ -108,7 +108,7 @@ class FeedsExcelParser extends FeedsParser{
           if(!isset($this->state->column_names)){
             $row_values[] = trim($cell->getCalculatedValue());
           }else{
-            if(strlen(trim('' . $cell->getCalculatedValue())) || (count($this->state->column_names) ? $this->state->column_names[$column] : $column) == 'GUID'){
+            if(trim('' . $cell->getCalculatedValue()) || (count($this->state->column_names) ? $this->state->column_names[$column] : $column) == 'GUID'){
               $row_values[count($this->state->column_names) ? $this->state->column_names[$column] : $column] = '' . $cell->getCalculatedValue();
             }
           }
@@ -236,7 +236,7 @@ class FeedsExcelParser extends FeedsParser{
       $empty_template_text = '';
     }else{
       $empty_template_text = t('<a href="!url" target="_blank" class="overlay-exclude">Excel template file</a> for this import.  Your template file should contain the following column headers:', array(
-        '!url' => url('import/' . $this->id . '/xlstemplate')
+        '!url' => url('import/' . $this->id . '/template')
       )) . '<br/><span style="font-size:80%">' . implode(", ", $sources) . '</span>';
     }
     $form['help'] = array(
