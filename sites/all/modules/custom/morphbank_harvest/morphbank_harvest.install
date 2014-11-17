@@ -182,11 +182,32 @@ function morphbank_harvest_schema() {
         'unsigned' => TRUE,
         'not null' => TRUE,
       ),
+      /*
       'query' => array(
         'description' => 'The harvest details in a query string format',
         'type' => 'text',
         'size' => 'normal',
         'not null' => TRUE,
+      ),
+      */
+      'search_unidentified' => array(
+        'description' => 'Whether or not to search taxa with \'unidentified\' in the name',
+        'type' => 'int',
+        'size' => 'tiny',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'max_images' => array(
+        'description' => 'The maximum number of images to save per term',
+        'type' => 'int',
+        'size' => 'normal',
+      ),
+      'remove_old' => array(
+        'description' => 'Whether or not to remove locally stored Morphbank images that were not returned in most recent query',
+        'type' => 'int',
+        'size' => 'tiny',
+        'not null' => TRUE,
+        'default' => 0,
       ),
       'execution_date' => array(
         'description' => 'The date, as Unix timestamp, this query was executed',

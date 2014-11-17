@@ -140,7 +140,6 @@ abstract class EntityMetadataWrapper {
    * Returns whether $value is a valid value to set.
    */
   public function validate($value) {
-drupal_set_message("Validating...");
     if (isset($value) && !entity_property_verify_data_type($value, $this->type)) {
       return FALSE;
     }
@@ -153,26 +152,6 @@ drupal_set_message("Validating...");
       // Do not allow NULL values if the property is required.
       return FALSE;
     }
-if (!(!isset($this->info['validation callback']) || call_user_func($this->info['validation callback'], $value, $this->info))) {
-  drupal_set_message('__failed fourth', 'error');
-if (!isset($this->info['validation callback'])) {
-  drupal_set_message('_    _validation callback not set', 'error');
-} else {
-  if (is_string($this->info['validation callback'])) {
-    drupal_set_message(t('_    _validation callback set and = @string', array('@type' => $type, '@string' => $this->info['validation callback'])));
-  } else {
-    $type = gettype($this->info['validation callback']);
-    drupal_set_message(t('_    _validation callback set and is type @type', array('@type' => $type)));
-  }
-}
-if (call_user_func($this->info['validation callback'], $value, $this->info)) {
-  drupal_set_message('_    _call_user_function returning non-false value');
-} else {
-  drupal_set_message('_    _call_user_function returning false, likely due to error', 'error');
-}
-
-}
-
     return !isset($this->info['validation callback']) || call_user_func($this->info['validation callback'], $value, $this->info);
   }
 

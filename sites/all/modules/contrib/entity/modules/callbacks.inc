@@ -598,10 +598,6 @@ function entity_metadata_field_file_validate_item($items, $context) {
   foreach ($items as $item) {
     // File-field items require a valid file.
     if (!isset($item['fid']) || !file_load($item['fid'])) {
-drupal_set_message('fid not set or file_load failed.', 'error');
-foreach($item as $key => $value) {
-  drupal_set_message(t('item[@key] = @value', array('@key' => $key, '@value' => $value)), 'error');
-}
       return FALSE;
     }
     if (isset($context['property info']['display']) && !isset($item['display'])) {

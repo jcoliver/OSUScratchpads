@@ -704,6 +704,8 @@ abstract class RulesIdentifiableDataWrapper extends EntityStructureWrapper {
    */
   public function set($value) {
     if (!$this->validate($value)) {
+//TODO: remove debugging message
+watchdog('rules.state.inc', 'set of rules.state.inc, validate returns false', NULL, WATCHDOG_DEBUG);
       throw new EntityMetadataWrapperException('Invalid data value given. Be sure it matches the required data type and format.');
     }
     // As custom wrapper classes can only appear for Rules variables, but not
