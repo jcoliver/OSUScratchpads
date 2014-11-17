@@ -42,13 +42,6 @@ function morphbank_harvest_menu() {
  * Define the form.
  */
 function morphbank_harvest_form() {
-  /* Old way, included ALL vocabularies
-  $vocabularies = taxonomy_get_vocabularies();
-  foreach ($vocabularies as $vocabulary) {
-    $taxonomies['morphbank_harvest_' . $vocabulary->vid] = $vocabulary->name;
-  }
-  */
-
   // Start by getting a list of all biological vocabularies, for select element
   $biological_vids = variable_get('biological_vids', FALSE);
   if(!$biological_vids){
@@ -100,6 +93,7 @@ function morphbank_harvest_form() {
         '#default_value' => 1,
     );
 
+    // Maximum number of errors to report after harvest, -1 means unlimited
     $form['maxerrors'] = array(
         '#type' => 'textfield',
         '#title' => t('Maximum number of errors to report'),
@@ -108,6 +102,7 @@ function morphbank_harvest_form() {
         '#element_validate' => array('element_validate_integer'),
     );
 
+    // The submit button for the form
     $form['submit'] = array(
         '#type' => 'submit',
         '#value' => t('Harvest'),
@@ -119,17 +114,23 @@ function morphbank_harvest_form() {
 /**
  * Verify that the values in submitted form are valid.
  *
- * Specifically, makes sure that value in 'maximages' field is either a positive
- *   integer or -1 (for an unlimited number of images)
- * @param unknown_type $form
+ * Specifically, makes sure that values in 'maximages' and 'maxerrors' fields are
+ *   either a positive integer or -1 (for an unlimited number)
+ * @param array $form  The form, as an array
  * @param unknown_type $form_state
- *   The form from which to harvest maximages value
+ *   The form values
  */
 function morphbank_harvest_form_validate($form, &$form_state) {
   $max_images = $form_state['values']['maximages'];
   if (is_numeric($max_images)) {
     if ($max_images < -1 || $max_images === 0){
       form_set_error('maximages', t('Maximum number of images per taxon must be a positive integer or equal -1 (@maximages is not a valid value).', array('@maximages' => $max_images)));
+    }
+  }
+  $max_errors = $form_state['values']['maxerrors'];
+  if (is_numeric($max_errors)) {
+    if ($max_errors < -1 || $max_errors=== 0){
+      form_set_error('maxerrors', t('Maximum number of errors to report must be a positive integer or equal -1 (@maxerrors is not a valid value).', array('@maxerrors' => $max_errors)));
     }
   }
 }
@@ -141,7 +142,7 @@ function morphbank_harvest_form_validate($form, &$form_state) {
  *
  * @param  $form
  * @param  $form_state
- *   The form from which to harvest values (maximages, searchunid, removeold)
+ *   The form from which to harvest values (maximages, searchunid, removeold, restrictranks, maxerrors)
  */
 function morphbank_harvest_form_submit($form, &$form_state) {
   // Define batch and operations here, move most of the guts to another method
@@ -180,34 +181,23 @@ function morphbank_harvest_form_submit($form, &$form_state) {
     $maxerrors = $form_state['values']['maxerrors'];
   }
 
-  // get the selected vid
+  // get the selected vid (the biological vocabulary that will supply term names)
   $vid_string = $form_state['values']['vid'];
   $vid = str_replace('morphbank_harvest_', '', $vid_string);
 
-  // get the corresponding taxonomy
+  // get the corresponding taxonomy for this vocabulary
   $taxonomy = taxonomy_get_tree($vid);
   if (!is_null($taxonomy) && count($taxonomy) > 0) {
     $problem = FALSE;
-    // TODO: these will all end up as elements in $context['results']
-    /*
-    $num_added = 0;
-    $num_changed = 0;
-    $num_unchanged = 0;
-    $num_deleted = 0;
-    $num_no_images = 0;
-    $num_queries = 0;
-    */
 
     // Before cycling over taxonomy, add a record to morphbank_harvests table
     $sid = $search_unidentifieds ? 1 : 0;
     $rem = $remove_old_files ? 1 : 0;
-//    $query = "?" . "searchunid=" . $sid . "&maximages=" . $maximages . "&removeold=" . $rem;
     $timestamp = time();
 
     //TODO store whether or not the search was restricted by ranks? Would need to update table, too
     $hid = db_insert('morphbank_harvests')
       ->fields(array(
-//        'query' => $query,
         'search_unidentified' => $sid,
         'max_images' => $maximages,
         'remove_old' => $rem,
@@ -215,18 +205,19 @@ function morphbank_harvest_form_submit($form, &$form_state) {
         'problem' => 1,
       ))->execute();
 
-    // TODO: split these conditionals for better error reporting
     if ($hid > 0) {
       if (file_get_contents(MORPHBANK_SERVICE)) {
 
+        // Set up the batch job
         $batch = array(
             'title' => t('Harvesting images ...'),
             'operations' => array(),
             'init_message' => t('Harvest begins'),
-            'progress_message' => t('Processed @current out of @total terms.'), //TODO: where are @current and @total coming from...?
+            'progress_message' => t('Processed @current out of @total terms.'),
             'error_message' => t('An error occurred during harvest'),
             'finished' => 'morphbank_harvest_finished',
         ) ;
+
 
         $batch_details = array(
             'hid' => $hid,
@@ -234,6 +225,8 @@ function morphbank_harvest_form_submit($form, &$form_state) {
         );
         $batch['operations'][] = array('_store_hid_maxerrors', array($batch_details));
 
+        // Array that will be sent to _harvest_from_morphbank, along with term,
+        // to dictate settings for query to Morphbank
         $harvest_details = array (
             'hid' => $hid,
             'search_unidentifieds' => $search_unidentifieds,
@@ -242,184 +235,17 @@ function morphbank_harvest_form_submit($form, &$form_state) {
             'maximages' => $maximages,
         );
 
+        // Loop over each term in the taxonomy
         foreach ($taxonomy as $term) {
+          // Add the term to the array we will send to _harvest_from_morphbank
           $harvest_details['term'] = $term;
-          //$batch['operations'][] = array('_csvimport_import_line', array(array_map('base64_encode', $line)));
+          // Submit one batch operation for each term
           $batch['operations'][] = array('_harvest_from_morphbank', array($harvest_details));
-
-          /*
-
-          $term_name = $term->name;
-          $tid = $term->tid;
-          // We now have term name.
-          // 1. Perform morphbank query  _query_morphbank
-          // 2. Process response         _process_response
-          //      If no images, move to next term;
-          //      if images, loop over them ($maximages is sent in query, so loop iterations should never exceed $maximages)
-          //        i. Get images from Morphbank.  (called by _process_response)
-          //          Check to see if file already exists using original_filename and morphbank ID
-          //          If it isn't there save file  _retrieve_morphbank_image
-          //          After saving file, get the fid from the file object, fid = file->fid;
-          //        ii. File has been saved, now we need to see if any specimens of this taxon have morphbank_ids
-          //          by call to _update_specimen_links:
-          //          Perform database query on field_morphbank_specimen_id to see if any specimens match
-          //          If so, update field_media field.
-          //        iii. Now that we have the file, call _update_file_links to:
-          //          a. Link the file to the taxonomy term we just searched on (field_taxonomic_name)
-          //          b. Link the imaging preparation technique term associated with the Morphbank view ID that was
-          //              included in the XML response.  For link to be made, requires field_morphbank_view_id of
-          //              terms to be not NULL.  If match is made, update the file's field_imaging_technique field
-          //          c. Finally, remove any specimens that may have once been linked to the image but no longer have
-          //              matching Morphbank specimen IDs.
-
-          $skip = FALSE;
-
-$restricted_search = array('Bembidion mundum', 'Bembidion festivum', 'Bembidion horni');
-if (!in_array($term_name, $restricted_search)) {
-  $skip = TRUE;
-}
-
-          // If this is unidentified, do we want to perform search?
-          if (!$search_unidentifieds) {
-            // Want to skip unidentifieds, so see if the string is in the name
-            if (strpos($term_name, 'unidentified') === FALSE) { // use === in case the name string starts with 'unidentified' (and would return zero, which would evaluate to TRUE for comparison 0 == FALSE )
-              // No 'unidentified' in string, so go ahead and include
-            } else {
-              // Found the string, so we will skip the record
-              $skip = TRUE;
-            }
-          }
-
-          if ($restrict_ranks && !$skip) {
-            $skip = TRUE;
-            $term_entity = taxonomy_term_load($term->tid);
-            if ($term_entity) {
-              $language = field_language('taxonomy_term', $term_entity, 'field_rank');
-              $term_rank = (isset($term_entity->field_rank[$language][0]['value']) ? strtolower($term_entity->field_rank[$language][0]['value']) : null);
-              //$term_rank = (isset($term_entity->field_rank[LANGUAGE_NONE][0]['value']) ? strtolower($term_entity->field_rank[LANGUAGE_NONE][0]['value']) : null);
-              //$term_rank = $term->field_rank[LANGUAGE_NONE][0]['value'];
-              if ($term_rank) {
-                if (in_array($term_rank, $ranks_to_harvest)) {
-                  $skip = FALSE;
-                }
-              }
-            }
-          }
-
-          if (!$skip){
-
-            // Make sure Morphbank is responsive
-            if (file_get_contents(MORPHBANK_SERVICE)) {
-                $responses = _query_morphbank($term_name, $maximages);
-              if (is_array($responses)) { // The numReturned element was not empty (see _query_morphbank)
-                $num_queries++;
-                if (count($responses) == 0) { // No images were returned from query
-                  $num_no_images++;
-                } else { // An array of SimpleXLMObjects returned
-                  // Uncomment for more verbose response per query
-                  // $num_images = count($responses);
-                  // drupal_set_message(t('***   @num_images images for term @term_name', array('@num_images' => $num_images, '@term_name' => $term_name)));
-                  foreach ($responses as $morphbank_response) {
-                    $result = _process_response($morphbank_response, $term_name, $tid, $hid);
-                    $found_result = FALSE;
-                    switch ($result) {
-                      case 'a':
-                        $num_added++;
-                        $found_result = TRUE;
-                        break;
-                      case 'c':
-                        $num_changed++;
-                        $found_result = TRUE;
-                        break;
-                      case 'u':
-                        $num_unchanged++;
-                        $found_result = TRUE;
-                        break;
-                    }
-                  }
-                }
-              } else { // The numReturned element wasn't found in the response
-                $problem = TRUE;
-              }
-            } else { // Morphbank is unresponsive
-              $problem = TRUE;
-            }
-          }
-
-*/
-
         } // end looping over all terms.
 
-/*
-        if ($problem) {
-          drupal_set_message(t("There was a problem connecting to Morphbank's server; some images may not have been harvested."), 'warning');
-        } else {
-          // And update the record in morphbank_harvests to reflect there were no problems
-          $num_updated = db_update('morphbank_harvests')
-            ->fields(array(
-              'problem' => 0,
-            ))
-            ->condition('hid', $hid, "=")
-            ->execute();
 
-          // If no problems, remove old files, if appropriate
-          if ($remove_old_files) {
-            $files_to_remove = db_select('morphbank_images', 'm')
-              ->fields('m', array('fid'))
-              ->condition('hid', $hid, '<>')
-              ->execute();
-
-            $num_to_remove = $files_to_remove->rowCount();
-            if ($num_to_remove > 0) {
-              $fids_remove = array();
-
-              foreach ($files_to_remove as $to_remove) {
-                $fids_remove[] = $to_remove->fid;
-                // $fids_remove[] = $to_remove['fid'];
-              }
-              // Remove the files (May not be the best way of doing this...)
-              //$files = file_load_multiple($fids_remove);
-              //foreach ($files as $file) {
-              //  file_delete($file, TRUE);
-              //  $num_deleted++;
-              //}
-              // Cycle through the fids we are to remove
-              foreach ($fids_remove as $fid) {
-
-                // Remove the files (May not be the best way of doing this...)
-                entity_delete('file', $fid);
-                // Remove references to image in morphbank_images
-                $delete = db_delete('morphbank_images')
-                  ->condition('fid', $fid)
-                  ->execute();
-                if ($delete) {
-                  $num_deleted++;
-                }
-              }
-            }
-          }
-          drupal_set_message(t('Morphbank harvest complete'));
-        }
-
-
-        drupal_set_message(t('@added added', array('@added' => format_plural($num_added, '1 image', '@num_added images', array('@num_added' => $num_added)))));
-        drupal_set_message(t('@changed updated', array('@changed' => format_plural($num_changed, '1 image', '@num_changed images', array('@num_changed' => $num_changed)))));
-        drupal_set_message(t('@unchanged unchanged', array('@unchanged' => format_plural($num_unchanged, '1 image', '@num_unchanged images', array('@num_unchanged' => $num_unchanged)))));
-        drupal_set_message(t('@deleted deleted', array('@deleted' => format_plural($num_deleted, '1 image', '@num_deleted images', array('@num_deleted' => $num_deleted)))));
-        drupal_set_message(t('@queries successfully performed', array('@queries' => format_plural($num_queries, '1 query', '@num_queries queries', array('@num_queries' => $num_queries)))));
-        drupal_set_message(t('@no_images had no corresponding images on Morphbank', array('@no_images' => format_plural($num_no_images, '1 term', '@no_images terms', array('@no_images' => $num_no_images)))));
-*/
-
-
-/*
-        drupal_set_message(t('@added images added', array('@added' => $num_added)));
-        drupal_set_message(t('@changed images updated', array('@changed' => $num_changed)));
-        drupal_set_message(t('@unchanged images unchanged', array('@unchanged' => $num_unchanged)));
-        drupal_set_message(t('@deleted images deleted', array('@deleted' => $num_deleted)));
-        drupal_set_message(t('@queries queries successfully performed', array('@queries' => $num_queries)));
-        drupal_set_message(t('@no_images terms had no corresponding images on Morphbank', array('@no_images' => $num_no_images)));
-*/
-
+        // Remove any old files (those that were not returned in query) due to (1) changes
+        // on Morphbank's end or (2) a reduction in the maximum number of images to harvest.
         if ($remove_old_files) {
           $batch['operations'][] = array('_post_harvest_cleanup', array(array('hid' => $hid)));
         }
@@ -431,8 +257,9 @@ if (!in_array($term_name, $restricted_search)) {
         drupal_set_message(t('Morphbank service at @morphbank_url is unresponsive', array('@morphbank_url' => MORPHBANK_SERVICE)), 'error');
       }
     } // end conditional for positive $hid (we successfully added record to morphbank_harvests table)
-
-    // And update the record in morphbank_harvests to reflect there were no problems
+    else {
+      drupal_set_message(t('Could not access morphbank_harvest_table'), 'error');
+    }
 
   } else {
     drupal_set_message(t('Empty vocabulary selected (vid = @vid)', array('@vid' => $vid)));
@@ -444,7 +271,7 @@ if (!in_array($term_name, $restricted_search)) {
 
 /**
  * Store the harvest id (hid) and maximum number of errors to report in results array
- * so we can access it later.
+ * so we can access it later.  Also establishes counter indicies.
  *
  * @param array  $hid_array
  *   A two-element array with the element 'hid' storing the integer corresponding
@@ -488,7 +315,6 @@ function _store_hid_maxerrors ($details_array, &$context) {
 function _harvest_from_morphbank ($harvest_details, &$context) {
   // Extract values from array
   $hid = $harvest_details['hid'];
-//  $context['results']['hid'] = $hid;
   $search_unidentifieds = $harvest_details['search_unidentifieds'];
   $restrict_ranks = $harvest_details['restrict_ranks'];
   $ranks_to_harvest = $harvest_details['ranks_to_harvest'];
@@ -497,7 +323,6 @@ function _harvest_from_morphbank ($harvest_details, &$context) {
 
   $term_name = $term->name;
   $tid = $term->tid;
-
 
   // We now have term name.
   // 1. Perform morphbank query  _query_morphbank
@@ -522,6 +347,7 @@ function _harvest_from_morphbank ($harvest_details, &$context) {
 
   $skip = FALSE;
 
+// TODO: remove this restriction
 $restricted_search = array('Bembidion mundum', 'Bembidion festivum', 'Bembidion horni');
 if (!in_array($term_name, $restricted_search)) {
   $skip = TRUE;
@@ -540,6 +366,7 @@ if (!in_array($term_name, $restricted_search)) {
 
   if ($restrict_ranks && !$skip) {
     $skip = TRUE;
+    // Switch over to EntityMetadataWrapper for this term_entity?
     $term_entity = taxonomy_term_load($term->tid);
     if ($term_entity) {
       $language = field_language('taxonomy_term', $term_entity, 'field_rank');
@@ -555,19 +382,15 @@ if (!in_array($term_name, $restricted_search)) {
   }
 
   if (!$skip){
+    // Message to print while batch processing
     $context['message'] = t('Querying Morphbank for @term_name', array('@term_name' => $term_name));
-
-    //usleep(2500); // TODO: delete when testing is complete
-
     // Make sure Morphbank is responsive
     if (file_get_contents(MORPHBANK_SERVICE)) {
       $responses = _query_morphbank($term_name, $maximages);
       if (is_array($responses)) { // The numReturned element was not empty (see _query_morphbank)
-        $context['results']['num_queries']++; // TODO: This is successfully being set...
-        //$num_queries++;
+        $context['results']['num_queries']++;
         if (count($responses) == 0) { // No images were returned from query
           $context['results']['num_no_images']++;
-          //$num_no_images++;
         } else { // An array of SimpleXLMObjects returned
           // Uncomment for more verbose response per query
           // $num_images = count($responses);
@@ -578,17 +401,14 @@ if (!in_array($term_name, $restricted_search)) {
             switch ($result) {
               case 'a':
                 $context['results']['num_added']++;
-                //$num_added++;
                 $found_result = TRUE;
                 break;
               case 'c':
                 $context['results']['num_changed']++;
-                //$num_changed++;
                 $found_result = TRUE;
                 break;
               case 'u':
                 $context['results']['num_unchanged']++;
-                //$num_unchanged++;
                 $found_result = TRUE;
                 break;
             } // end switch on $result
@@ -596,15 +416,24 @@ if (!in_array($term_name, $restricted_search)) {
         } // end else for some images found
       } else { // The numReturned element wasn't found in the response
         $context['results']['missing_elements'][] = $term_name;
-        //$problem = TRUE;
       }
     } else { // Morphbank is unresponsive
       $context['results']['morphbank_unresponsive'][] = $term_name;
-      //$problem = TRUE;
     }
   } // end conditional for record not to skip ($skip == FALSE)
 }
 
+/**
+ * Update morphbank_images table and remove files and/or links that are
+ *   obsolete.
+ *
+ * @param array $post_harvest_details
+ *   A single-element array containing harvest ID ('hid')
+ *
+ * @param array $context
+ *   Array from batch processing, passed as reference.  Used here to store
+ *   number of images deleted in cleanup.
+ */
 function _post_harvest_cleanup($post_harvest_details, &$context) {
   $hid = $post_harvest_details['hid'];
 
@@ -622,12 +451,6 @@ function _post_harvest_cleanup($post_harvest_details, &$context) {
       // $fids_remove[] = $to_remove['fid'];
     }
 
-    // Remove the files (May not be the best way of doing this...)
-    //$files = file_load_multiple($fids_remove);
-    //foreach ($files as $file) {
-    //  file_delete($file, TRUE);
-    //  $num_deleted++;
-    //}
     // Cycle through the fids we are to remove
     foreach ($fids_remove as $fid) {
       // TODO: Need to update (remove) specimen, links too.
@@ -646,6 +469,16 @@ function _post_harvest_cleanup($post_harvest_details, &$context) {
   }
 }
 
+/**
+ * Report results of harvest.
+ *
+ * @param unknown_type $success
+ * @param array $results
+ * @param array $operations
+ *
+ * <p>Uses values stored in $results array to report results of morphbank image harvest.</p>
+ * <p>Reports problems that may have been encountered.</p>
+ */
 function morphbank_harvest_finished($success, $results, $operations) {
   // Extract values of interest
   $hid = $results['hid'];
@@ -672,9 +505,13 @@ function morphbank_harvest_finished($success, $results, $operations) {
       'morphbank_unresponsive' => 'morphbank unresponsive',
     );
 
+  $no_problems = TRUE;
   foreach ($problem_arrays as $problem => $description) {
     $reported = 0;
     $total = count($results[$problem]);
+    if ($total > 0) {
+      $no_problems = FALSE;
+    }
     // only report $maxerrors; unless $maxerrors = -1, then report them all
     while (($reported < $maxerrors && $reported < $total) || $maxerrors == -1) {
       $message_array = array(
@@ -693,14 +530,15 @@ function morphbank_harvest_finished($success, $results, $operations) {
     }
   }
 
-
-  $num_updated = db_update('morphbank_harvests')
-    ->fields(array(
-      'problem' => 0,
-    ))
-    ->condition('hid', $hid, "=")
-    ->execute();
-
+  // If no problems encountered, update the morphbank_harvests table to indicate zero problems
+  if ($no_problems) {
+    $num_updated = db_update('morphbank_harvests')
+      ->fields(array(
+        'problem' => 0,
+      ))
+      ->condition('hid', $hid, "=")
+      ->execute();
+    }
 }
 
 /**
@@ -769,10 +607,10 @@ function _query_morphbank($term_name, $maximages) {
 }
 
 /**
- * Processes a XML object corresponding to a Morphbank image record.
+ * Processes a XML object corresponding to a single Morphbank image record.
  *
  * Extracts relevant element values from $response.  If this record (as identified
- * by the Morphbank ID) is new (no record in morphbank_images table), it adds
+ *   by the Morphbank ID) is new (no record in morphbank_images table), it adds
  *   a record to the table; if the record is *not* new, checks the date of last
  *   modification (in the XML as dateLastModified element).  If the record has
  *   been updated on Morphbank since the last harvest (as recorded in
@@ -813,8 +651,6 @@ function _query_morphbank($term_name, $maximages) {
  */
 function _process_response($response, $term_name, $tid, $hid) {
   $to_return = FALSE;
-
-  /**/
 
   // Want to retrieve the image id
   $source_id_element = $response->sourceId;
@@ -914,7 +750,7 @@ function _process_response($response, $term_name, $tid, $hid) {
     _update_file_links($fid, $tid, $morphbank_view_id, $morphbank_image_id);
 
     // Finally, check to see if any links to Specimen/Observation nodes need to be removed (say, for example, if the
-    //   Morphbank specimen ID changed)
+    // Morphbank specimen ID changed)
     _remove_outdated_links($fid, $morphbank_specimen_id);
 
   }
@@ -1164,12 +1000,13 @@ function _update_file_links($fid, $tid, $morphbank_view_id, $morphbank_image_id)
         $imaging_terms = taxonomy_get_tree($imaging_vid);
         if (!is_null($imaging_terms) && count($imaging_terms) > 0) {
           foreach ($imaging_terms as $imaging_term) { // This could probably be streamlined by using a database query
+            // TODO: consider using EntityMetadataWrapper to avoid LANGUAGE_NONE issues
             $term_entity = taxonomy_term_load($imaging_term->tid);
             if ($term_entity) {
               $language = field_language('taxonomy_term', $term_entity, 'field_morphbank_view_id');
-              $view_id_of_term = $term_entity->field_morphbank_view_id[LANGUAGE_NONE][0]['value'];
+//              $view_id_of_term = $term_entity->field_morphbank_view_id[LANGUAGE_NONE][0]['value'];
               // TODO: Avoid use of LANGUAGE_NONE
-//              $view_id_of_term = $term_entity->field_morphbank_view_id[$language][0]['value'];
+              $view_id_of_term = $term_entity->field_morphbank_view_id[$language][0]['value'];
               if ($morphbank_view_id == $view_id_of_term) {
                 $imaging_tid = $imaging_term->tid;
                 break;
@@ -1219,13 +1056,14 @@ function _remove_outdated_links($fid, $morphbank_specimen_id) {
       ->condition('field_media_fid', $fid, '=')
       ->execute();
 
-    // Now see if any DO NOT have the same $morphbank_specimen_id
+    // Loop over all nodes with links to this fid
     foreach ($node_query as $result) {
       $nid = $result->entity_id;
       $node = node_load($nid);
       $wrapper = entity_metadata_wrapper('node', $node);
       $node_mb_id = $wrapper->field_morphbank_specimen_id->value();
 
+      // Now see if any DO NOT have the same $morphbank_specimen_id
       if ($node_mb_id != $morphbank_specimen_id) {
         // Remove links for those without appropriate $morphbank_specimen_id
         $current_list = $wrapper->field_media->value();
