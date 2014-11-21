@@ -141,6 +141,7 @@ abstract class EntityMetadataWrapper {
    */
   public function validate($value) {
     if (isset($value) && !entity_property_verify_data_type($value, $this->type)) {
+watchdog('entity.wrapper.inc', 'validate fail 1', NULL, WATCHDOG_DEBUG);
       return FALSE;
     }
     // Only proceed with further checks if this is not a list item. If this is
@@ -150,8 +151,13 @@ abstract class EntityMetadataWrapper {
     }
     if (!isset($value) && !empty($this->info['required'])) {
       // Do not allow NULL values if the property is required.
+watchdog('entity.wrapper.inc', 'validate fail 2', NULL, WATCHDOG_DEBUG);
       return FALSE;
     }
+if (!(!isset($this->info['validation callback']) || call_user_func($this->info['validation callback'], $value, $this->info))) {
+  watchdog('entity.wrapper.inc', 'validate fail 3', NULL, WATCHDOG_DEBUG);
+}
+
     return !isset($this->info['validation callback']) || call_user_func($this->info['validation callback'], $value, $this->info);
   }
 
@@ -1072,8 +1078,12 @@ class EntityListWrapper extends EntityMetadataWrapper implements IteratorAggrega
   public function validate($value) {
     // Required lists may not be empty or unset.
     if (!empty($this->info['required']) && empty($value)) {
+watchdog('entity.wrapper.inc', 'validate fail 4', NULL, WATCHDOG_DEBUG);
       return FALSE;
     }
+if (!parent::validate($value)) {
+  watchdog('entity.wrapper.inc', 'validate fail 5', NULL, WATCHDOG_DEBUG);
+}
     return parent::validate($value);
   }
 

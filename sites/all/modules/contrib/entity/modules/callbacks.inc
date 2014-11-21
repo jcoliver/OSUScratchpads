@@ -598,9 +598,11 @@ function entity_metadata_field_file_validate_item($items, $context) {
   foreach ($items as $item) {
     // File-field items require a valid file.
     if (!isset($item['fid']) || !file_load($item['fid'])) {
+watchdog('callbacks.inc', 'Validation fail 6', NULL, WATCHDOG_DEBUG);
       return FALSE;
     }
     if (isset($context['property info']['display']) && !isset($item['display'])) {
+watchdog('callbacks.inc', 'Validation fail 7', NULL, WATCHDOG_DEBUG);
       return FALSE;
     }
   }

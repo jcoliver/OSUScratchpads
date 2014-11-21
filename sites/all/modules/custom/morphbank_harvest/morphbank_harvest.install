@@ -209,6 +209,11 @@ function morphbank_harvest_schema() {
         'not null' => TRUE,
         'default' => 0,
       ),
+      'restrict_ranks' => array(
+        'description' => 'Whether or not to restrict query to terms of rank species and below',
+        'type' => 'int',
+        'size' => 'normal',
+      ),
       'execution_date' => array(
         'description' => 'The date, as Unix timestamp, this query was executed',
         'type' => 'int',
