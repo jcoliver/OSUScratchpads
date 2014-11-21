@@ -4,7 +4,8 @@
  * Harvest images from Morphbank for a selected vocabulary
  */
 
-//TODO: Issues on subsequent harvests if additional images are added...
+//TODO: Issues deleting images, 'ghost' references to deleted files are
+// persisting somewhere in specimen records (but not in field_data_field_media...)
 
 /**
  * The URL for the morphbank service; append 'request' for queries
@@ -376,23 +377,22 @@ if (!in_array($term_name, $restricted_search)) {
     }
   }
 
+  // Check rank, if rank restriction was selected
   if ($restrict_ranks && !$skip) {
     $skip = TRUE;
-    // TODO: Switch over to EntityMetadataWrapper for this term_entity?
-    $term_entity = taxonomy_term_load($term->tid);
-    if ($term_entity) {
-      $language = field_language('taxonomy_term', $term_entity, 'field_rank');
-      $term_rank = (isset($term_entity->field_rank[$language][0]['value']) ? strtolower($term_entity->field_rank[$language][0]['value']) : null);
-      //$term_rank = (isset($term_entity->field_rank[LANGUAGE_NONE][0]['value']) ? strtolower($term_entity->field_rank[LANGUAGE_NONE][0]['value']) : null);
-      //$term_rank = $term->field_rank[LANGUAGE_NONE][0]['value'];
+    $term_wrapper = entity_metadata_wrapper('taxonomy_term', $term->tid);
+    if ($term_wrapper) {
+      $term_rank = $term_wrapper->field_rank->value();
       if ($term_rank) {
+        $term_rank = strtolower($term_rank);
         if (in_array($term_rank, $ranks_to_harvest)) {
           $skip = FALSE;
         }
-      }
-    }
-  }
+      } // End conditional for non-null $term_rank
+    } // End conditional for non-null $term_wrapper
+  } // End conditional for restricting ranks if not already skipping record
 
+  // So long as we are not skipping this term, start harvest process
   if (!$skip){
     // Message to print while batch processing
     $context['message'] = t('Querying Morphbank for @term_name images', array('@term_name' => $term_name));
@@ -887,6 +887,7 @@ function _retrieve_morphbank_image($morphbank_image_id, $term_name, $original_fi
  */
 function _update_specimen_links($fid, $morphbank_specimen_id) {
   if ($fid > 0 && $morphbank_specimen_id > 0) {
+    // Get the nodes with the passed $morphbank_specimen_id
     $node_query = new EntityFieldQuery();
     $node_query->entityCondition('entity_type', 'node')
       ->entityCondition('bundle', 'specimen_observation')
@@ -942,6 +943,7 @@ function _update_specimen_links($fid, $morphbank_specimen_id) {
               // only update the field if we have made changes (and the list is not empty)
               // Let _post_harvest_cleanup remove any obsolete links
               if (count($new_list) > 0) {
+                // TODO: consider wrapping set in a try/catch, in case EntityMetadataWrapperException is thrown
                 $wrapper->field_media->set($new_list);
                 $wrapper->save();
               }
@@ -1071,7 +1073,9 @@ function _update_file_links($fid, $tid, $morphbank_view_id, $morphbank_image_id)
 
     if ($entity_wrapper) {
 
+      // ------------------------------------ //
       // First part: link to the taxonomy term we just searched on, if not already linked
+      // ------------------------------------ //
       $current_list = $entity_wrapper->field_taxonomic_name->value();
 
       if (!$current_list) {
@@ -1094,7 +1098,9 @@ function _update_file_links($fid, $tid, $morphbank_view_id, $morphbank_image_id)
         $entity_wrapper->save();
       }
 
+      // ------------------------------------ //
       // Second part: see if there is a term in Image Preparation Technique with this Morphbank View ID
+      // ------------------------------------ //
       $vocabularies = taxonomy_get_vocabularies();
       foreach ($vocabularies as $vocabulary) {
         if ($vocabulary->machine_name == 'imaging_technique') {
@@ -1104,34 +1110,33 @@ function _update_file_links($fid, $tid, $morphbank_view_id, $morphbank_image_id)
       }
 
       $imaging_tid = -1;
-      if ($imaging_vid > 0) {
+      if ($imaging_vid > 0) { // found the vocabulary
         $imaging_terms = taxonomy_get_tree($imaging_vid);
         if (!is_null($imaging_terms) && count($imaging_terms) > 0) {
           foreach ($imaging_terms as $imaging_term) { // This could probably be streamlined by using a database query
-            // TODO: consider using EntityMetadataWrapper to avoid LANGUAGE_NONE issues
-            $term_entity = taxonomy_term_load($imaging_term->tid);
-            if ($term_entity) {
-              $language = field_language('taxonomy_term', $term_entity, 'field_morphbank_view_id');
-//              $view_id_of_term = $term_entity->field_morphbank_view_id[LANGUAGE_NONE][0]['value'];
-              // TODO: Avoid use of LANGUAGE_NONE
-              $view_id_of_term = $term_entity->field_morphbank_view_id[$language][0]['value'];
-              if ($morphbank_view_id == $view_id_of_term) {
-                $imaging_tid = $imaging_term->tid;
-                break;
-              }
-            }
-          }
-        }
-        if ($imaging_tid > 0) {
-          $make_link = TRUE;
-          if ($make_link) {
-            $entity_wrapper->field_imaging_technique->set($imaging_tid);
-            $entity_wrapper->save();
-          }
-        }
-      }
+            $term_wrapper = entity_metadata_wrapper('taxonomy_term', $imaging_term->tid);
+            if ($term_wrapper) {
+              $term_view_id = $term_wrapper->field_morphbank_view_id->value();
+              if ($term_view_id > 0) {
+                if ($morphbank_view_id == $term_view_id) {
+                  $imaging_tid = $imaging_term->tid;
+                  break;
+                }
+              } // End conditional for valid (positive) $term_view_id
+            } // End conditional for non-null $term_wrapper
+          } // End looping over all imaging terms
+        } // End conditional for non-null and non-empty $imaging_terms
 
-      // Third part: add the Morphbank image ID
+        // Found a term in the imaging vocabulary with this morphbank_view_id, so link the file to this imaging term
+        if ($imaging_tid > 0) {
+          $entity_wrapper->field_imaging_technique->set($imaging_tid);
+          $entity_wrapper->save();
+        } // End conditional for valid (positive) $imaging_tid
+      } // End conditional for valid (positive) $imaging_vid
+
+      // ------------------------------------ //
+      // Third part: add the Morphbank image ID to the file
+      // ------------------------------------ //
       if ($morphbank_image_id > 0) {
         $entity_wrapper->field_morphbank_image_id->set($morphbank_image_id);
         $entity_wrapper->save();
@@ -1189,8 +1194,8 @@ function _remove_outdated_links($fid, $morphbank_specimen_id) {
             $wrapper->field_media->set($new_list);
             $wrapper->save();
           }
-        }
-      }
-    }
-  }
+        } // End conditional for non-null $current_list
+      } // End conditional for different morphbank specimen ids
+    } // End looping over $node_query results
+  } // End conditional for valid (positive) $fid and $morphbank_specimen_id
 }
