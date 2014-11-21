@@ -278,9 +278,6 @@ function morphbank_harvest_form_submit($form, &$form_state) {
   } else {
     drupal_set_message(t('Empty vocabulary selected (vid = @vid)', array('@vid' => $vid)));
   }
-  //$time_end = time();
-  //$total_seconds = $time_end - $time_start; //TODO: move this time to somewhere else, like morphbank_harvest_finished
-  //drupal_set_message(t('Total time: @time seconds', array('@time' => $total_seconds)));
 }
 
 /**
@@ -477,6 +474,13 @@ function _post_harvest_cleanup($post_harvest_details, &$context) {
       // eolapi_disable in eolapi.install
       // eolapi_taxonomy_term_delete in eolapi.module
       entity_delete('file', $fid);
+
+      // Attempt Nov.21.2014, this does NOT remove links to files (i.e. those in field_data_field_media)
+      //$file = file_load($fid);
+      //if ($file) {
+      //  file_delete($file, TRUE);
+      //}
+
       // Remove references to image in morphbank_images
       $delete = db_delete('morphbank_images')
         ->condition('fid', $fid)
@@ -486,6 +490,32 @@ function _post_harvest_cleanup($post_harvest_details, &$context) {
       }
     }
   }
+
+// TODO: Some brute force cleanup here, should be removed
+/*
+$missing_fids_data = db_select('file_managed', 'f')
+  ->fields('f', array('fid'))
+  ->execute();
+
+$real_fids = array();
+foreach ($missing_fids_data as $result) {
+  $fid = $result->fid;
+  if ($fid > 0) {
+    $real_fids[] = $fid;
+  }
+}
+if (count($real_fids) > 0) {
+watchdog('morphbank_harvest', 'Attempting to remove files not in file_managed table', NULL, WATCHDOG_DEBUG);
+  $tables = array('field_data_field_media', 'field_revision_field_media');
+  foreach ($tables as $table) {
+    $remove_missing = db_delete($table)
+      ->condition('entity_type', 'node', '=')
+      ->condition('bundle', 'specimen_observation', '=')
+      ->condition('field_media_fid', $real_fids, 'NOT IN')
+      ->execute();
+  }
+}
+*/
 }
 
 /**
@@ -784,7 +814,6 @@ function _process_response($response, $term_name, $tid, $hid) {
 
   }
 
-
   return $to_return;
 }
 
@@ -866,8 +895,6 @@ function _update_specimen_links($fid, $morphbank_specimen_id) {
 
     if (array_key_exists('node', $node_result) && count($node_result['node']) > 0) {
       $node_ids = array_keys($node_result['node']);
-      // TODO: remove
-      //$nid = $node_ids[0]; // A cludge?  Perhaps, but there should only be 0 or 1 Specimen/Observation node(s) with this Morphbank specimen ID
       // Cycle over ALL results.  Duplicate specimens (even if they should not exist) may cause issues
       foreach ($node_ids as $nid) {
 
@@ -926,6 +953,17 @@ function _update_specimen_links($fid, $morphbank_specimen_id) {
   } // End conditional for $fid > 0 and $morphbank_specimen_id > 0
 }
 
+/**
+ * Remove links between specimen_observation nodes and files with fids in passed array.
+ *
+ * <p>Currently works by simply deleting records in field_data_field_media
+ * and field_revision_field_media tables that have a value in the field_media_fid field
+ * that is present in the passed array $fids.</p>
+ *
+ * @param array $fids
+ *   integer array of fid values of files that will be removed
+ *
+ */
 function _remove_specimen_links_to_files ($fids) {
   if (is_array($fids)) {
     if (count($fids) > 0){
@@ -985,24 +1023,12 @@ function _remove_specimen_links_to_files ($fids) {
             // Throws EntityMetadataWrapperException (see set and validate functions
             // in EntityMetadataWrapper in entity.wrapper.inc)
             if (count($new_list) > 0) {
-watchdog('morphbank_harvest', 'About to call set on field_media for specimen node @specimen', array('@specimen' => $specimen_nid), WATCHDOG_DEBUG);
               $specimen_wrapper->field_media->set($new_list);
-watchdog('morphbank_harvest', '...set field_media for specimen node @specimen', array('@specimen' => $specimen_nid), WATCHDOG_DEBUG);
             } else {
               $num_to_remove = count($wrapper->field_media);
-watchdog('morphbank_harvest', 'About to iterate over @num elements in field_media...', array('@num' => $num_to_remove), WATCHDOG_DEBUG);
               for ($i = 0; $i < $num_to_remove; $i++) {
                 $specimen_wrapper->field_media[$i]->set();
-watchdog('morphbank_harvest', '...set element @i...', array('@i' => $i), WATCHDOG_DEBUG);
               }
-watchdog('morphbank_harvest', '...iterated and set', NULL, WATCHDOG_DEBUG);
-//watchdog('morphbank_harvest', 'About to set field_media to NULL for specimen node @specimen', array('@specimen' => $specimen_nid), WATCHDOG_DEBUG);
-//              $specimen_wrapper->field_media = NULL; // Maybe this will work, maybe it will not...No, it does not
-//watchdog('morphbank_harvest', '...set field_media to NULL for specimen node @specimen', array('@specimen' => $specimen_nid), WATCHDOG_DEBUG);
-//watchdog('morphbank_harvest', 'About to set field_media to empty array for specimen node @specimen', array('@specimen' => $specimen_nid), WATCHDOG_DEBUG);
-//              $new_list = array();
-//              $specimen_wrapper->field_media->set($new_list);
-//watchdog('morphbank_harvest', '...set field_media to empty array for specimen node @specimen', array('@specimen' => $specimen_nid), WATCHDOG_DEBUG);
 	        }
 	        $specimen_wrapper->save();
 	      }
