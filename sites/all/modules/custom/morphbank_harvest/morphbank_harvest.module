@@ -7,6 +7,8 @@
 //TODO: Issues deleting images, 'ghost' references to deleted files are
 // persisting somewhere in specimen records (but not in field_data_field_media...)
 
+//TODO: Form should not be visible sans appropriate permissions
+
 /**
  * The URL for the morphbank service; append 'request' for queries
  */
