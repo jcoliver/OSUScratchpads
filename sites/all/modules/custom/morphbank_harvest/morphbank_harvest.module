@@ -4,16 +4,12 @@
  * Harvest images from Morphbank for a selected vocabulary
  */
 
-//TODO: Issues deleting images, 'ghost' references to deleted files are
-// persisting somewhere in specimen records (but not in field_data_field_media...)
-
 //TODO: Form should not be visible sans appropriate permissions
 
 /**
  * The URL for the morphbank service; append 'request' for queries
  */
-define("MORPHBANK_SERVICE", "http://services.morphbank.net/mb3/"); // TODO: use production site when it is back online
-//define("MORPHBANK_SERVICE", "http://services.dev.morphbank.net/mbsvc3prod/");
+define("MORPHBANK_SERVICE", "http://services.morphbank.net/mb3/");
 
 /**
  * The URL for morphbank records
@@ -465,8 +461,26 @@ function _post_harvest_cleanup($post_harvest_details, &$context) {
     }
 
     // First remove any links to specimens
-    _remove_specimen_links_to_files($fids_remove);
+    // TODO: This should be unnecessary.  when the entity is deleted, so should links to that entity
+    //_remove_specimen_links_to_files($fids_remove);
 
+    // Attempt Jan.13.2015, using entity_delete_multiple instead of entity_delete
+    // Start with removal of links in morphbank_images table
+    foreach ($fids_remove as $fid) {
+          $delete = db_delete('morphbank_images')
+        ->condition('fid', $fid)
+        ->execute();
+      if ($delete) {
+        $context['results']['num_deleted']++;
+      }
+    }
+
+    // Then delete the file entities (ideally removes references to the entity
+    // in field_*_field_media, field_*_field_taxonomic_name, field_*_field_imaging_technique,
+    // and field_*_field_morphbank_image_id, where * is 'data' and 'revision')
+    entity_delete_multiple('file', $fids_remove);
+
+/*
     // Cycle through the fids we are to remove
     foreach ($fids_remove as $fid) {
 
@@ -491,33 +505,8 @@ function _post_harvest_cleanup($post_harvest_details, &$context) {
         $context['results']['num_deleted']++;
       }
     }
-  }
-
-// TODO: Some brute force cleanup here, should be removed
-/*
-$missing_fids_data = db_select('file_managed', 'f')
-  ->fields('f', array('fid'))
-  ->execute();
-
-$real_fids = array();
-foreach ($missing_fids_data as $result) {
-  $fid = $result->fid;
-  if ($fid > 0) {
-    $real_fids[] = $fid;
-  }
-}
-if (count($real_fids) > 0) {
-watchdog('morphbank_harvest', 'Attempting to remove files not in file_managed table', NULL, WATCHDOG_DEBUG);
-  $tables = array('field_data_field_media', 'field_revision_field_media');
-  foreach ($tables as $table) {
-    $remove_missing = db_delete($table)
-      ->condition('entity_type', 'node', '=')
-      ->condition('bundle', 'specimen_observation', '=')
-      ->condition('field_media_fid', $real_fids, 'NOT IN')
-      ->execute();
-  }
-}
 */
+  }
 }
 
 /**
@@ -926,7 +915,7 @@ function _update_specimen_links($fid, $morphbank_specimen_id) {
               $file_as_array = (array)$file;
               // Have to add a 'display' element
               $file_as_array['display'] = 1;
-              $file_as_array['description'] = '';
+              $file_as_array['description'] = 'image file retreived from Morphbank';
               // Add this new file to current list
               $current_list[] = $file_as_array;
 
@@ -1171,7 +1160,7 @@ function _remove_outdated_links($fid, $morphbank_specimen_id) {
       ->condition('field_media_fid', $fid, '=')
       ->execute();
 
-    // Loop over all nodes with links to this fid
+    // Loop over all specimen nodes with links to this fid
     foreach ($node_query as $result) {
       $nid = $result->entity_id;
       $node = node_load($nid);

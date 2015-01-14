@@ -146,6 +146,11 @@ function morphbank_harvest_disable() {
     $fids[] = $row->fid;
   }
 
+  // Just use entity_delete_multiple
+  if (count($fids) > 0) {
+    entity_delete_multiple('file', $fids);
+  }
+/*
   // If there are any files listed in morphbank_images table, delete links and files
   if (count($fids) > 0) {
     // Delete records from field_data_field_media table
@@ -155,12 +160,14 @@ function morphbank_harvest_disable() {
     //TODO:  These are managed files, is this step necessary?
     db_delete('file_usage')->condition('fid', $fids, 'IN')->execute();
 
+    // TODO: consider using entity_delete or entity_delete_multiple instead, and skipping file_usage and fild_media removals?
     // Remove the files themselves
     $files = file_load_multiple($fids);
     foreach ($files as $file) {
       file_delete($file);
     }
   }
+*/
 }
 
 /**
