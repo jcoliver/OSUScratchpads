@@ -2,9 +2,14 @@
 /**
  * @file
  * Harvest images from Morphbank for a selected vocabulary
+ *
+ * Currently uses taxonomic name to search; in an ideal world
+ * the morphbank identifiers themselves could be stored in
+ * Scratchpads (by altering the vocabulary fields).  This is
+ * not currently possible, as of 28 January 2015, as the
+ * services of Morphbank do not allow image query searches
+ * using the identifiers of organisms.
  */
-
-//TODO: Form should not be visible sans appropriate permissions
 
 /**
  * The URL for the morphbank service; append 'request' for queries
@@ -30,6 +35,7 @@ function morphbank_harvest_menu() {
     'description' => t('Harvests images from Morphbank for a given vocabulary'),
     'page callback' => 'drupal_get_form',
     'page arguments' => array('morphbank_harvest_form'),
+    'access arguments' => array('administer site configuration'), // To restrict to adminstrators
     'access callback' => TRUE,
     'type' => MENU_NORMAL_ITEM,
   );
@@ -358,12 +364,6 @@ function _harvest_from_morphbank ($harvest_details, &$context) {
 
   $skip = FALSE;
 
-// TODO: remove this restriction
-$restricted_search = array('Bembidion mundum', 'Bembidion festivum', 'Bembidion horni');
-if (!in_array($term_name, $restricted_search)) {
-  $skip = TRUE;
-}
-
   // If this is unidentified, do we want to perform search?
   if (!$search_unidentifieds) {
     // Want to skip unidentifieds, so see if the string is in the name
@@ -399,12 +399,12 @@ if (!in_array($term_name, $restricted_search)) {
       $responses = _query_morphbank($term_name, $maximages);
       if (is_array($responses)) { // The numReturned element was not empty (see _query_morphbank)
         $context['results']['num_queries']++;
+        // Uncomment for more verbose response per query
+        // $num_images = count($responses);
+        // drupal_set_message(t('***   @num_images images for term @term_name', array('@num_images' => $num_images, '@term_name' => $term_name)));
         if (count($responses) == 0) { // No images were returned from query
           $context['results']['num_no_images']++;
         } else { // An array of SimpleXLMObjects returned
-          // Uncomment for more verbose response per query
-          // $num_images = count($responses);
-          // drupal_set_message(t('***   @num_images images for term @term_name', array('@num_images' => $num_images, '@term_name' => $term_name)));
           foreach ($responses as $morphbank_response) {
             $result = _process_response($morphbank_response, $term_name, $tid, $hid);
             $found_result = FALSE;
@@ -460,11 +460,6 @@ function _post_harvest_cleanup($post_harvest_details, &$context) {
       $fids_remove[] = $to_remove->fid;
     }
 
-    // First remove any links to specimens
-    // TODO: This should be unnecessary.  when the entity is deleted, so should links to that entity
-    //_remove_specimen_links_to_files($fids_remove);
-
-    // Attempt Jan.13.2015, using entity_delete_multiple instead of entity_delete
     // Start with removal of links in morphbank_images table
     foreach ($fids_remove as $fid) {
           $delete = db_delete('morphbank_images')
@@ -480,32 +475,6 @@ function _post_harvest_cleanup($post_harvest_details, &$context) {
     // and field_*_field_morphbank_image_id, where * is 'data' and 'revision')
     entity_delete_multiple('file', $fids_remove);
 
-/*
-    // Cycle through the fids we are to remove
-    foreach ($fids_remove as $fid) {
-
-      // Remove the files (May not be the best way of doing this...)
-      // TODO: Look at file_delete in file.inc
-      // file_delete_multiple in file_entity.file_api
-      // eolapi_disable in eolapi.install
-      // eolapi_taxonomy_term_delete in eolapi.module
-      entity_delete('file', $fid);
-
-      // Attempt Nov.21.2014, this does NOT remove links to files (i.e. those in field_data_field_media)
-      //$file = file_load($fid);
-      //if ($file) {
-      //  file_delete($file, TRUE);
-      //}
-
-      // Remove references to image in morphbank_images
-      $delete = db_delete('morphbank_images')
-        ->condition('fid', $fid)
-        ->execute();
-      if ($delete) {
-        $context['results']['num_deleted']++;
-      }
-    }
-*/
   }
 }
 
@@ -620,7 +589,6 @@ function _query_morphbank($term_name, $maximages) {
   foreach ($search_terms as $key => $value) {
     $encoded_parameters[] = urlencode($key) . '=' . urlencode($value);
   }
-
   // Build the query string
   $query_string = implode('&', $encoded_parameters);
 
@@ -649,10 +617,14 @@ function _query_morphbank($term_name, $maximages) {
           $response_array[] = $object;
         }
       }
-
       return $response_array;
     }
+    watchdog('morphbank_harvest', 'Malformed XML returned for query on @term_name', array('@term_name' => $term_name), WATCHDOG_NOTICE);
   } // End conditional for success response code
+  else {
+    watchdog('morphbank_harvest', 'Unsuccessful response code (@response_code) query on @term_name', array('@response_code' => $code, '@term_name' => $term_name), WATCHDOG_NOTICE);
+  }
+
   return FALSE;
 }
 
@@ -792,7 +764,9 @@ function _process_response($response, $term_name, $tid, $hid) {
       }
     } // End else for latest version of file already on disk
 
-    // Either (1) file has been written or (2) the image did not need to be downloaded again, either way, we have the fid
+    // Either (1) file has been written or (2) the image did not need
+    // to be downloaded again; either way, we have the fid.
+
     // Now need to check for adding links to Specimen/Observation nodes
     _update_specimen_links($fid, $morphbank_specimen_id);
 
@@ -804,7 +778,6 @@ function _process_response($response, $term_name, $tid, $hid) {
     _remove_outdated_links($fid, $morphbank_specimen_id);
 
   }
-
   return $to_return;
 }
 
@@ -934,9 +907,13 @@ function _update_specimen_links($fid, $morphbank_specimen_id) {
               // only update the field if we have made changes (and the list is not empty)
               // Let _post_harvest_cleanup remove any obsolete links
               if (count($new_list) > 0) {
-                // TODO: consider wrapping set in a try/catch, in case EntityMetadataWrapperException is thrown
-                $wrapper->field_media->set($new_list);
-                $wrapper->save();
+                try {
+                  $wrapper->field_media->set($new_list);
+                  $wrapper->save();
+                } catch (Exception $exception) {
+                  $exception_class = get_class($exception);
+                  watchdog('morphbank_harvest', t('Exception @class caught while attempting to link file @fid and specimen with morphbank id @morphbank_specimen_id'), array('@class' => $exception_class, '@fid' => $fid, '@morphbank_specimen_id' => $morphbank_specimen_id), WATCHDOG_WARNING);
+                }
               }
             } // End conditional for $make_link
           } // End conditional for non-null $wrapper
@@ -944,95 +921,6 @@ function _update_specimen_links($fid, $morphbank_specimen_id) {
       } // End looping over all $node_ids
     } // End conditional for at least one result
   } // End conditional for $fid > 0 and $morphbank_specimen_id > 0
-}
-
-/**
- * Remove links between specimen_observation nodes and files with fids in passed array.
- *
- * <p>Currently works by simply deleting records in field_data_field_media
- * and field_revision_field_media tables that have a value in the field_media_fid field
- * that is present in the passed array $fids.</p>
- *
- * @param array $fids
- *   integer array of fid values of files that will be removed
- *
- */
-function _remove_specimen_links_to_files ($fids) {
-  if (is_array($fids)) {
-    if (count($fids) > 0){
-
-      // One approach, just deleting references in table
-      // Brute force?
-      /**/
-      $remove_links_query = db_delete('field_data_field_media')
-        ->condition('entity_type', 'node', '=')
-        ->condition('bundle', 'specimen_observation', '=')
-        ->condition('field_media_fid', $fids, 'IN')
-        ->execute();
-
-      $remove_links_query = db_delete('field_revision_field_media')
-        ->condition('entity_type', 'node', '=')
-        ->condition('bundle', 'specimen_observation', '=')
-        ->condition('field_media_fid', $fids, 'IN')
-        ->execute();
-
-      /**/
-      // Early approach attempting to use EntityMetadataWrapper
-      /*
-      // Want to do the same thing for field_revision_field_media table?
-      $node_query = db_select('field_data_field_media', 'f')
-        ->distinct(TRUE)
-        ->fields('f', array('entity_id'))
-        ->condition('entity_type', 'node', '=')
-        ->condition('bundle', 'specimen_observation', '=')
-        ->condition('field_media_fid', $fids, 'IN')
-        ->execute();
-      // Loop over all nodes with links to any fids that will be removed
-      foreach ($node_query as $result) {
-        $specimen_nid = $result->entity_id;
-        $specimen_node = node_load($specimen_nid);
-	    $specimen_wrapper = entity_metadata_wrapper('node', $specimen_node);
-  	    // The list of currently linked files
-	    $current_list = $specimen_wrapper->field_media->value();
-  	    if ($current_list) {
-	      $new_list = array();
-	      $changed = FALSE;
-  	      // Loop over all currently linked files
-	      foreach ($current_list as $list_item) {
-	        // for each in list, see if it is one of the ones that will be removed.
-	        $fid_in_list = $list_item['fid'];
-	        if (in_array($fid_in_list, $fids)){
-	          $changed = TRUE;
-	        } else {
-	          // Make sure the item is an array and the file actually does exist
-              if (is_array($list_item) && file_load($list_item['fid'])) {
-                $new_list[] = $list_item;
-              }
-	        }
-	      } // End loop over all currently linked files (current_list)
-  	      // May or may not have changed the list of files to link at this point
-	      if ($changed) { // only need to update if changes were made to list
-            // TODO: Pitching a fit here when $new_list is (appropriately) empty
-            // Throws EntityMetadataWrapperException (see set and validate functions
-            // in EntityMetadataWrapper in entity.wrapper.inc)
-            if (count($new_list) > 0) {
-              $specimen_wrapper->field_media->set($new_list);
-            } else {
-              $num_to_remove = count($wrapper->field_media);
-              for ($i = 0; $i < $num_to_remove; $i++) {
-                $specimen_wrapper->field_media[$i]->set();
-              }
-	        }
-	        $specimen_wrapper->save();
-	      }
-	    } // End conditional for non-empty current_list
-      } // End looping over all query results (i.e. specimens)
-
-      // End earlier approach using EntityMetadataWrapper
-      /**/
-
-    } // End conditional for non-empty fids array
-  } // End conditional for valid fids array
 }
 
 /**
@@ -1065,28 +953,19 @@ function _update_file_links($fid, $tid, $morphbank_view_id, $morphbank_image_id)
     if ($entity_wrapper) {
 
       // ------------------------------------ //
-      // First part: link to the taxonomy term we just searched on, if not already linked
+      // First part: link to the taxonomy term we just searched on,
+      // over-writing any values that are already there
       // ------------------------------------ //
-      $current_list = $entity_wrapper->field_taxonomic_name->value();
 
-      if (!$current_list) {
-        $current_list = array();
-      }
-
-      //Make sure this term is not already attached to this image file (via tid)
-      $make_link = TRUE;
-      foreach ($current_list as $list_item) {
-        if ($tid == $list_item->tid){  // not $tid == $list_item['tid']?
-          $make_link = FALSE;
-          break;
-        }
-      }
-
-      if ($make_link) {
-        $term_as_array = (array)$tid; // Cast as an array before attaching
-        $current_list[] = $term_as_array;
-        $entity_wrapper->field_taxonomic_name->set($current_list);
+      $new_list = array();
+      $term_as_array = (array)$tid;
+      $new_list[] = $term_as_array;
+      try {
+        $entity_wrapper->field_taxonomic_name->set($new_list);
         $entity_wrapper->save();
+      } catch (Exception $exception) {
+        $exception_class = get_class($exception);
+        watchdog('morphbank_harvest', t('Exception @class caught while attempting to link file @fid and taxonomy term @term'), array('@class' => $exception_class, '@fid' => $fid, '@term' => $tid), WATCHDOG_WARNING);
       }
 
       // ------------------------------------ //
@@ -1120,8 +999,13 @@ function _update_file_links($fid, $tid, $morphbank_view_id, $morphbank_image_id)
 
         // Found a term in the imaging vocabulary with this morphbank_view_id, so link the file to this imaging term
         if ($imaging_tid > 0) {
-          $entity_wrapper->field_imaging_technique->set($imaging_tid);
-          $entity_wrapper->save();
+          try {
+            $entity_wrapper->field_imaging_technique->set($imaging_tid);
+            $entity_wrapper->save();
+          } catch (Exception $exception) {
+            $exception_class = get_class($exception);
+            watchdog('morphbank_harvest', t('Exception @class caught while attempting to link file @fid and taxonomy term @term'), array('@class' => $exception_class, '@fid' => $fid, '@term' => $tid), WATCHDOG_WARNING);
+          }
         } // End conditional for valid (positive) $imaging_tid
       } // End conditional for valid (positive) $imaging_vid
 
@@ -1129,8 +1013,13 @@ function _update_file_links($fid, $tid, $morphbank_view_id, $morphbank_image_id)
       // Third part: add the Morphbank image ID to the file
       // ------------------------------------ //
       if ($morphbank_image_id > 0) {
-        $entity_wrapper->field_morphbank_image_id->set($morphbank_image_id);
-        $entity_wrapper->save();
+        try {
+          $entity_wrapper->field_morphbank_image_id->set($morphbank_image_id);
+          $entity_wrapper->save();
+        } catch (Exception $exception) {
+          $exception_class = get_class($exception);
+          watchdog('morphbank_harvest', t('Exception @class caught while attempting to link file @fid and taxonomy term @term'), array('@class' => $exception_class, '@fid' => $fid, '@term' => $tid), WATCHDOG_WARNING);
+        }
       }
     }
   }
@@ -1182,8 +1071,14 @@ function _remove_outdated_links($fid, $morphbank_specimen_id) {
             }
           }
           if ($changed) { // At least one link was dropped, so save the new list
-            $wrapper->field_media->set($new_list);
-            $wrapper->save();
+            try {
+              $wrapper->field_media->set($new_list);
+              $wrapper->save();
+            } catch (Exception $exception) {
+              $exception_class = get_class($exception);
+              watchdog('morphbank_harvest', t('Exception @class caught while attempting to remove outdated links between file @fid and specimens'), array('@class' => $exception_class, '@fid' => $fid), WATCHDOG_WARNING);
+            }
+
           }
         } // End conditional for non-null $current_list
       } // End conditional for different morphbank specimen ids
