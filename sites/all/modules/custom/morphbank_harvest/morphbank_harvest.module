@@ -36,7 +36,7 @@ function morphbank_harvest_menu() {
     'page callback' => 'drupal_get_form',
     'page arguments' => array('morphbank_harvest_form'),
     'access arguments' => array('administer site configuration'), // To restrict to adminstrators
-    'access callback' => TRUE,
+    'access callback' => 'user_access',
     'type' => MENU_NORMAL_ITEM,
   );
   return $items;

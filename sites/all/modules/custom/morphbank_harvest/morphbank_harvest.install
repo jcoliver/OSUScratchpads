@@ -41,7 +41,6 @@ function morphbank_harvest_enable() {
   // Add morphbank specimen ID field to Specimen/Observation content types if not already there
   $instance = field_info_instance('node', 'field_morphbank_specimen_id', 'specimen_observation');
   if (!$instance) {
-    // TODO: It would be good to put this in the 'Miscellaneous' tab...
     $instance = array(
       'bundle' => 'specimen_observation',
       'entity_type' => 'node',
@@ -127,6 +126,20 @@ function morphbank_harvest_enable() {
   @drupal_mkdir('public://morphbank');
 }
 
+/**
+ * Implements hook_field_group_info_alter()
+ *
+ * Put the Morphbank specimen ID field in the 'Miscellaneous' tab when displayed in tables
+ *
+ * @param array $groups
+ * Reference to an array of field group definition objects.
+ */
+function morphbank_field_group_info_alter(&$groups) {
+  if (!empty($groups['group_misc_display|node|specimen_observation|default'])) {
+    $groups['group_misc_display|node|specimen_observation|default']->data['children'][] = 'field_morphbank_specimen_id';
+  }
+}
+/**/
 /**
  * Implements hook_disable().
  *
