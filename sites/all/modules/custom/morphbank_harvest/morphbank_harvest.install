@@ -139,7 +139,7 @@ function morphbank_field_group_info_alter(&$groups) {
     $groups['group_misc_display|node|specimen_observation|default']->data['children'][] = 'field_morphbank_specimen_id';
   }
 }
-/**/
+
 /**
  * Implements hook_disable().
  *
